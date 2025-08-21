@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import '@/styles/globals.css'
 import { Providers } from '@/components/providers'
 import { DebugPanel, DevIndicator } from '@/components/debug'
+import { SimpleDebugToggle } from '@/components/debug/simple-debug-toggle'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -28,6 +29,8 @@ export default function RootLayout({
           <DebugPanel />
           {/* Development Environment Indicator */}
           <DevIndicator position="top-right" showApiCount={true} />
+          {/* Simple Debug Toggle - Highly visible for testing */}
+          <SimpleDebugToggle />
         </Providers>
       </body>
     </html>
