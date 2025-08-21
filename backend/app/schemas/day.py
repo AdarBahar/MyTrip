@@ -1,7 +1,7 @@
 """
 Day schemas
 """
-from datetime import date as Date, datetime
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -11,7 +11,6 @@ from app.models.day import DayStatus
 class DayBase(BaseModel):
     """Base day schema"""
     seq: int = Field(..., gt=0, description="Day sequence number (1, 2, 3, etc.)")
-    date: Optional[Date] = Field(None, description="Specific date for this day (optional)")
     status: DayStatus = Field(DayStatus.ACTIVE, description="Day status")
     rest_day: bool = Field(False, description="Whether this is a rest day (no driving)")
     notes: Optional[Dict[str, Any]] = Field(None, description="Additional notes and metadata")
@@ -20,7 +19,6 @@ class DayBase(BaseModel):
 class DayCreate(BaseModel):
     """Schema for creating a day"""
     seq: Optional[int] = Field(None, gt=0, description="Day sequence number (auto-generated if not provided)")
-    date: Optional[Date] = Field(None, description="Specific date for this day (optional)")
     status: DayStatus = Field(DayStatus.ACTIVE, description="Day status")
     rest_day: bool = Field(False, description="Whether this is a rest day (no driving)")
     notes: Optional[Dict[str, Any]] = Field(None, description="Additional notes and metadata")
@@ -29,7 +27,6 @@ class DayCreate(BaseModel):
 class DayUpdate(BaseModel):
     """Schema for updating a day"""
     seq: Optional[int] = Field(None, gt=0, description="Day sequence number")
-    date: Optional[Date] = Field(None, description="Specific date for this day")
     status: Optional[DayStatus] = Field(None, description="Day status")
     rest_day: Optional[bool] = Field(None, description="Whether this is a rest day")
     notes: Optional[Dict[str, Any]] = Field(None, description="Additional notes and metadata")

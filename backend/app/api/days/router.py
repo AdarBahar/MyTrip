@@ -136,7 +136,6 @@ async def create_day(
     day = Day(
         trip_id=trip_id,
         seq=seq,
-        date=day_data.date,
         status=day_data.status,
         rest_day=day_data.rest_day,
         notes=day_data.notes

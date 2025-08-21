@@ -16,23 +16,21 @@ class TestDaysCreate:
         """Test creating a day with all fields specified"""
         day_data = {
             "seq": 1,
-            "date": "2024-06-15",
             "status": "active",
             "rest_day": False,
             "notes": {"description": "First day of the trip"}
         }
-        
+
         response = client.post(
             f"/trips/{test_trip.id}/days",
             json=day_data,
             headers=auth_headers
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["seq"] == 1
-        assert data["date"] == "2024-06-15"
         assert data["status"] == "active"
         assert data["rest_day"] is False
         assert data["notes"]["description"] == "First day of the trip"
@@ -54,7 +52,6 @@ class TestDaysCreate:
         data = response.json()
         
         assert data["seq"] == 1  # Auto-generated as first day
-        assert data["date"] is None
         assert data["status"] == "active"  # Default
         assert data["rest_day"] is False  # Default
         assert data["notes"] is None
@@ -186,34 +183,32 @@ class TestDaysList:
     def test_list_days_with_data(self, client: TestClient, auth_headers: dict, test_trip: Trip, db_session):
         """Test listing days when trip has days"""
         # Create test days
-        day1 = Day(trip_id=test_trip.id, seq=1, date=date(2024, 6, 15))
+        day1 = Day(trip_id=test_trip.id, seq=1)
         day2 = Day(trip_id=test_trip.id, seq=2, rest_day=True)
-        day3 = Day(trip_id=test_trip.id, seq=3, date=date(2024, 6, 17))
-        
+        day3 = Day(trip_id=test_trip.id, seq=3)
+
         db_session.add_all([day1, day2, day3])
         db_session.commit()
-        
+
         response = client.get(
             f"/trips/{test_trip.id}/days",
             headers=auth_headers
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert len(data["days"]) == 3
         assert data["total"] == 3
         assert data["trip_id"] == test_trip.id
-        
+
         # Check ordering by sequence
         assert data["days"][0]["seq"] == 1
         assert data["days"][1]["seq"] == 2
         assert data["days"][2]["seq"] == 3
-        
+
         # Check specific day data
-        assert data["days"][0]["date"] == "2024-06-15"
         assert data["days"][1]["rest_day"] is True
-        assert data["days"][2]["date"] == "2024-06-17"
 
     def test_list_days_without_authentication(self, client: TestClient, test_trip: Trip):
         """Test listing days without authentication should fail"""
@@ -240,25 +235,23 @@ class TestDaysGet:
         day = Day(
             trip_id=test_trip.id,
             seq=1,
-            date=date(2024, 6, 15),
             rest_day=False,
             notes={"description": "Test day"}
         )
         db_session.add(day)
         db_session.commit()
         db_session.refresh(day)
-        
+
         response = client.get(
             f"/trips/{test_trip.id}/days/{day.id}",
             headers=auth_headers
         )
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["id"] == day.id
         assert data["seq"] == 1
-        assert data["date"] == "2024-06-15"
         assert data["rest_day"] is False
         assert data["notes"]["description"] == "Test day"
 
@@ -291,14 +284,13 @@ class TestDaysUpdate:
     def test_update_day_all_fields(self, client: TestClient, auth_headers: dict, test_trip: Trip, db_session):
         """Test updating all fields of a day"""
         # Create test day
-        day = Day(trip_id=test_trip.id, seq=1, date=date(2024, 6, 15))
+        day = Day(trip_id=test_trip.id, seq=1)
         db_session.add(day)
         db_session.commit()
         db_session.refresh(day)
 
         update_data = {
             "seq": 2,
-            "date": "2024-06-16",
             "status": "inactive",
             "rest_day": True,
             "notes": {"updated": True, "reason": "Changed plans"}
@@ -314,7 +306,6 @@ class TestDaysUpdate:
         data = response.json()
 
         assert data["seq"] == 2
-        assert data["date"] == "2024-06-16"
         assert data["status"] == "inactive"
         assert data["rest_day"] is True
         assert data["notes"]["updated"] is True
@@ -322,7 +313,7 @@ class TestDaysUpdate:
     def test_update_day_partial_fields(self, client: TestClient, auth_headers: dict, test_trip: Trip, db_session):
         """Test updating only some fields of a day"""
         # Create test day
-        day = Day(trip_id=test_trip.id, seq=1, date=date(2024, 6, 15), rest_day=False)
+        day = Day(trip_id=test_trip.id, seq=1, rest_day=False)
         db_session.add(day)
         db_session.commit()
         db_session.refresh(day)
@@ -343,7 +334,6 @@ class TestDaysUpdate:
 
         # Unchanged fields
         assert data["seq"] == 1
-        assert data["date"] == "2024-06-15"
 
     def test_update_day_sequence_conflict(self, client: TestClient, auth_headers: dict, test_trip: Trip, db_session):
         """Test updating day sequence to existing sequence should fail"""
