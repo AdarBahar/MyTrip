@@ -106,6 +106,17 @@ export default function TripsPage() {
             <div className="flex items-center space-x-4 mb-2">
               <h1 className="text-4xl font-bold text-gray-900">My Trips</h1>
               <DebugStatus />
+              {/* Simple debug test */}
+              <div style={{
+                padding: '4px 8px',
+                backgroundColor: '#10b981',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: 'bold'
+              }}>
+                DEBUG TEST
+              </div>
             </div>
             <p className="text-gray-600">
               Welcome back, {user?.display_name || 'User'}! Plan and manage your road trip adventures

@@ -4,6 +4,7 @@ import '@/styles/globals.css'
 import { Providers } from '@/components/providers'
 import { DebugPanel, DevIndicator } from '@/components/debug'
 import { SimpleDebugToggle } from '@/components/debug/simple-debug-toggle'
+import { BasicDebugIndicator } from '@/components/basic-debug-indicator'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -31,6 +32,8 @@ export default function RootLayout({
           <DevIndicator position="top-right" showApiCount={true} />
           {/* Simple Debug Toggle - Highly visible for testing */}
           <SimpleDebugToggle />
+          {/* Basic Debug Indicator - Fallback */}
+          <BasicDebugIndicator />
         </Providers>
       </body>
     </html>
