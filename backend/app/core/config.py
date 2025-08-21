@@ -66,6 +66,12 @@ class Settings(BaseSettings):
                 f"mysql+pymysql://{self.DB_USER}:{encoded_password}"
                 f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?charset=utf8mb4"
             )
+        elif self.DB_CLIENT.lower() == "sqlite":
+            # SQLite for testing
+            if self.DB_HOST == ":memory:":
+                return "sqlite:///:memory:"
+            else:
+                return f"sqlite:///{self.DB_NAME}.db"
         else:
             # Fallback for PostgreSQL if needed
             encoded_password = quote_plus(self.DB_PASSWORD)

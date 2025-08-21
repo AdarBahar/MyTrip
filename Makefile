@@ -9,10 +9,26 @@ help:
 	@echo "  restart      - Restart all services"
 	@echo "  clean        - Clean up containers and volumes"
 	@echo "  build        - Build all Docker images"
+	@echo ""
+	@echo "Testing commands:"
 	@echo "  test         - Run all tests"
+	@echo "  test.backend - Run backend API tests"
+	@echo "  test.auth    - Run authentication tests"
+	@echo "  test.trips   - Run trips API tests"
+	@echo "  test.routing - Run routing API tests"
+	@echo "  test.health  - Run health check tests"
+	@echo "  test.coverage- Run tests with coverage report"
+	@echo "  test.quick   - Run quick tests only"
+	@echo "  test.frontend- Run frontend tests"
+	@echo "  test.e2e     - Run end-to-end tests"
+	@echo "  test.watch   - Run tests in watch mode"
+	@echo ""
+	@echo "Database commands:"
 	@echo "  db.migrate   - Run database migrations"
 	@echo "  db.seed      - Seed database with demo data"
 	@echo "  db.reset     - Reset database (drop and recreate)"
+	@echo ""
+	@echo "Development commands:"
 	@echo "  dev.backend  - Run backend in development mode"
 	@echo "  dev.frontend - Run frontend in development mode"
 	@echo "  install      - Install dependencies for both backend and frontend"
@@ -79,11 +95,48 @@ format:
 
 # Testing commands
 test:
-	cd backend && pytest
+	@echo "🧪 Running all tests..."
+	cd backend && python run_tests.py all --verbose
+
+test.backend:
+	@echo "🧪 Running backend API tests..."
+	cd backend && python run_tests.py all --verbose
+
+test.auth:
+	@echo "🧪 Running authentication tests..."
+	cd backend && python run_tests.py auth --verbose
+
+test.trips:
+	@echo "🧪 Running trips API tests..."
+	cd backend && python run_tests.py trips --verbose
+
+test.routing:
+	@echo "🧪 Running routing API tests..."
+	cd backend && python run_tests.py routing --verbose
+
+test.health:
+	@echo "🧪 Running health check tests..."
+	cd backend && python run_tests.py health --verbose
+
+test.coverage:
+	@echo "🧪 Running tests with coverage report..."
+	cd backend && python run_tests.py all --coverage --verbose
+
+test.quick:
+	@echo "🧪 Running quick tests (excluding slow tests)..."
+	cd backend && pytest -m "not slow" --tb=short
+
+test.frontend:
+	@echo "🧪 Running frontend tests..."
 	cd frontend && pnpm test
 
 test.e2e:
+	@echo "🧪 Running end-to-end tests..."
 	cd frontend && pnpm test:e2e
+
+test.watch:
+	@echo "🧪 Running tests in watch mode..."
+	cd backend && pytest --tb=short -f
 
 # Setup commands for new developers
 setup:

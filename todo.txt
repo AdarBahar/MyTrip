@@ -10,3 +10,11 @@ Settings
     Delete trip
     ?
 Share
+
+my trips:
+search (auto complete)
+order by name, date
+
+POI
+Start/end
+stops
