@@ -1,9 +1,9 @@
 """
 Day schemas
 """
-from datetime import datetime
+from datetime import datetime, date as Date
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, computed_field
 
 from app.models.day import DayStatus
 
@@ -41,6 +41,19 @@ class Day(DayBase):
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime] = None
+
+    # Optional trip information for date calculation
+    trip_start_date: Optional[Date] = Field(None, description="Trip start date (for calculated_date)")
+
+    @computed_field
+    @property
+    def calculated_date(self) -> Optional[Date]:
+        """Calculate the date for this day based on trip start date and sequence"""
+        if not self.trip_start_date:
+            return None
+
+        from datetime import timedelta
+        return self.trip_start_date + timedelta(days=self.seq - 1)
 
 
 class DayList(BaseModel):

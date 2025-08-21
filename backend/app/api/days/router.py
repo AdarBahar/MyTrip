@@ -68,7 +68,8 @@ async def list_days(
             day_dict = {
                 **day.__dict__,
                 'stops_count': stops_count,
-                'has_route': False  # TODO: Check for route versions when implemented
+                'has_route': False,  # TODO: Check for route versions when implemented
+                'trip_start_date': trip.start_date  # Add for calculated_date
             }
             days_list.append(DayWithStops(**day_dict))
         
@@ -78,14 +79,21 @@ async def list_days(
             trip_id=trip_id
         )
     else:
-        # Simple query without extra info
-        days = db.query(Day).filter(
+        # Simple query without extra info but include trip start_date for calculated_date
+        days = db.query(Day).join(Trip).filter(
             Day.trip_id == trip_id,
             Day.deleted_at.is_(None)
         ).order_by(Day.seq).all()
-        
+
+        # Add trip start_date to each day for calculated_date
+        days_with_trip_date = []
+        for day in days:
+            day_dict = day.__dict__.copy()
+            day_dict['trip_start_date'] = trip.start_date
+            days_with_trip_date.append(DaySchema.model_validate(day_dict))
+
         return DayList(
-            days=[DaySchema.model_validate(day) for day in days],
+            days=days_with_trip_date,
             total=len(days),
             trip_id=trip_id
         )
@@ -144,8 +152,12 @@ async def create_day(
     db.add(day)
     db.commit()
     db.refresh(day)
-    
-    return DaySchema.model_validate(day)
+
+    # Add trip start_date for calculated_date
+    day_dict = day.__dict__.copy()
+    day_dict['trip_start_date'] = trip.start_date
+
+    return DaySchema.model_validate(day_dict)
 
 
 @router.get("/{day_id}", response_model=DaySchema)
@@ -171,11 +183,15 @@ async def get_day(
         Day.trip_id == trip_id,
         Day.deleted_at.is_(None)
     ).first()
-    
+
     if not day:
         raise HTTPException(status_code=404, detail="Day not found")
-    
-    return DaySchema.model_validate(day)
+
+    # Add trip start_date for calculated_date
+    day_dict = day.__dict__.copy()
+    day_dict['trip_start_date'] = trip.start_date
+
+    return DaySchema.model_validate(day_dict)
 
 
 @router.patch("/{day_id}", response_model=DaySchema)
@@ -228,8 +244,12 @@ async def update_day(
     
     db.commit()
     db.refresh(day)
-    
-    return DaySchema.model_validate(day)
+
+    # Add trip start_date for calculated_date
+    day_dict = day.__dict__.copy()
+    day_dict['trip_start_date'] = trip.start_date
+
+    return DaySchema.model_validate(day_dict)
 
 
 @router.delete("/{day_id}")

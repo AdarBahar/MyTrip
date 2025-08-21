@@ -402,6 +402,159 @@ class TestDaysDelete:
         assert response.status_code == 404
 
 
+class TestDaysDateCalculation:
+    """Test dynamic date calculation for days"""
+
+    def test_calculated_date_with_trip_start_date(self, client: TestClient, auth_headers: dict, test_user, db_session):
+        """Test that calculated_date is properly computed when trip has start_date"""
+        from app.models.trip import Trip
+        from datetime import date
+
+        # Create trip with start date
+        trip = Trip(
+            slug="test-trip-with-date",
+            title="Test Trip",
+            destination="Test Destination",
+            start_date=date(2024, 6, 15),
+            created_by=test_user.id
+        )
+        db_session.add(trip)
+        db_session.commit()
+        db_session.refresh(trip)
+
+        # Create day
+        day_data = {"seq": 3}  # Day 3 should be June 17 (start + 2 days)
+
+        response = client.post(
+            f"/trips/{trip.id}/days",
+            json=day_data,
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["seq"] == 3
+        assert data["calculated_date"] == "2024-06-17"  # June 15 + 2 days
+        assert data["trip_start_date"] == "2024-06-15"
+
+    def test_calculated_date_without_trip_start_date(self, client: TestClient, auth_headers: dict, test_user, db_session):
+        """Test that calculated_date is null when trip has no start_date"""
+        from app.models.trip import Trip
+
+        # Create trip without start date
+        trip = Trip(
+            slug="test-trip-no-date",
+            title="Test Trip",
+            destination="Test Destination",
+            start_date=None,
+            created_by=test_user.id
+        )
+        db_session.add(trip)
+        db_session.commit()
+        db_session.refresh(trip)
+
+        # Create day
+        day_data = {"seq": 1}
+
+        response = client.post(
+            f"/trips/{trip.id}/days",
+            json=day_data,
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["seq"] == 1
+        assert data["calculated_date"] is None
+        assert data["trip_start_date"] is None
+
+    def test_calculated_date_sequence_progression(self, client: TestClient, auth_headers: dict, test_user, db_session):
+        """Test that calculated_date progresses correctly with sequence numbers"""
+        from app.models.trip import Trip
+        from datetime import date
+
+        # Create trip with start date
+        trip = Trip(
+            slug="test-trip-progression",
+            title="Test Trip",
+            destination="Test Destination",
+            start_date=date(2024, 6, 10),
+            created_by=test_user.id
+        )
+        db_session.add(trip)
+        db_session.commit()
+        db_session.refresh(trip)
+
+        # Create multiple days
+        for seq in [1, 2, 5]:  # Test non-consecutive sequences
+            day_data = {"seq": seq}
+            response = client.post(
+                f"/trips/{trip.id}/days",
+                json=day_data,
+                headers=auth_headers
+            )
+            assert response.status_code == 200
+
+        # List days and check calculated dates
+        response = client.get(
+            f"/trips/{trip.id}/days",
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        days = data["days"]
+
+        # Check calculated dates
+        assert days[0]["seq"] == 1
+        assert days[0]["calculated_date"] == "2024-06-10"  # Start date
+
+        assert days[1]["seq"] == 2
+        assert days[1]["calculated_date"] == "2024-06-11"  # Start + 1 day
+
+        assert days[2]["seq"] == 5
+        assert days[2]["calculated_date"] == "2024-06-14"  # Start + 4 days
+
+    def test_calculated_date_in_get_day_endpoint(self, client: TestClient, auth_headers: dict, test_user, db_session):
+        """Test that calculated_date is included in individual day retrieval"""
+        from app.models.trip import Trip
+        from app.models.day import Day
+        from datetime import date
+
+        # Create trip with start date
+        trip = Trip(
+            slug="test-trip-get",
+            title="Test Trip",
+            destination="Test Destination",
+            start_date=date(2024, 7, 1),
+            created_by=test_user.id
+        )
+        db_session.add(trip)
+        db_session.commit()
+        db_session.refresh(trip)
+
+        # Create day directly in database
+        day = Day(trip_id=trip.id, seq=4)
+        db_session.add(day)
+        db_session.commit()
+        db_session.refresh(day)
+
+        # Get day via API
+        response = client.get(
+            f"/trips/{trip.id}/days/{day.id}",
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["seq"] == 4
+        assert data["calculated_date"] == "2024-07-04"  # July 1 + 3 days
+        assert data["trip_start_date"] == "2024-07-01"
+
+
 # TODO: Add reorder tests when reorder functionality is implemented
 # class TestDaysReorder:
 #     """Test day reordering endpoints - to be implemented in future enhancement"""
