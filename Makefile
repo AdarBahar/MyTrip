@@ -110,6 +110,11 @@ test.trips:
 	@echo "🧪 Running trips API tests..."
 	cd backend && python run_tests.py trips --verbose
 
+test.trip-dates:
+	@echo "🧪 Running trip date management tests..."
+	cd backend && python run_tests.py trips --verbose
+	cd frontend && pnpm test -- tests/components/trips tests/lib/api/trips.test.ts tests/integration/trip-date-management.test.tsx
+
 test.routing:
 	@echo "🧪 Running routing API tests..."
 	cd backend && python run_tests.py routing --verbose
