@@ -167,3 +167,23 @@ def multiple_test_trips(db_session, test_user):
         db_session.refresh(trip)
 
     return trips
+
+
+@pytest.fixture
+def test_day(db_session, test_trip):
+    """Create a test day"""
+    from app.models.day import Day, DayStatus
+    from datetime import date
+
+    day = Day(
+        trip_id=test_trip.id,
+        seq=1,
+        date=date(2024, 6, 15),
+        status=DayStatus.ACTIVE,
+        rest_day=False,
+        notes={"description": "Test day"}
+    )
+    db_session.add(day)
+    db_session.commit()
+    db_session.refresh(day)
+    return day

@@ -14,7 +14,7 @@ from app.models import Base
 from app.api.auth.router import router as auth_router
 from app.api.trips.router import router as trips_router
 from app.api.routing.router import router as routing_router
-# from app.api.days import router as days_router
+from app.api.days.router import router as days_router
 # from app.api.stops import router as stops_router
 # from app.api.pins import router as pins_router
 
@@ -153,7 +153,7 @@ async def root():
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(trips_router, prefix="/trips", tags=["trips"])
 app.include_router(routing_router, prefix="/routing", tags=["routing"])
-# app.include_router(days_router, prefix="/days", tags=["days"])
+app.include_router(days_router, prefix="/trips/{trip_id}/days", tags=["days"])
 # app.include_router(stops_router, prefix="/stops", tags=["stops"])
 # app.include_router(pins_router, prefix="/pins", tags=["pins"])
 
