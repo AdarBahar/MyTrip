@@ -1,0 +1,12 @@
+"id": "01K365YF7N0QVENA3HQZKGH7XA",
+"email": "adar.bahar@gmail.com",
+fake_token_01K365YF7N0QVENA3HQZKGH7XA
+
+
+Todo:
+Set start date
+edit start date
+Settings
+    Delete trip
+    ?
+Share

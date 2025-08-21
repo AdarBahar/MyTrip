@@ -1,0 +1,39 @@
+graphhopper:
+  # DataReader file
+  datareader.file: /data/map.osm.pbf
+
+  # Local folder used by graphhopper
+  graph.location: /data/graph-cache
+
+  # Routing profiles
+  profiles:
+    - name: car
+      vehicle: car
+      weighting: fastest
+      turn_costs: true
+    - name: motorcycle
+      vehicle: motorcycle
+      weighting: fastest
+      turn_costs: true
+    - name: bike
+      vehicle: bike
+      weighting: fastest
+
+  # Routing profiles for CH
+  profiles_ch:
+    - profile: car
+    - profile: motorcycle
+    - profile: bike
+
+  # Routing profiles for LM
+  profiles_lm: []
+
+  # Web API
+  web:
+    bind_host: 0.0.0.0
+    port: 8989
+
+  # Import
+  import:
+    osm:
+      ignored_highways: ferry

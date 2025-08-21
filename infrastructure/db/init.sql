@@ -1,0 +1,2 @@
+-- MySQL initialization script
+-- Note: Using external MySQL database, no initialization needed
