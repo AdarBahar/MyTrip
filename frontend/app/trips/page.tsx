@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Plus, MapPin, Users, Calendar, LogOut } from 'lucide-react'
 import { fetchWithAuth } from '@/lib/auth'
-import { DebugStatus } from '@/components/debug'
+import { MinimalDebugStatus } from '@/components/minimal-debug'
 
 interface TripCreator {
   id: string
@@ -105,7 +105,7 @@ export default function TripsPage() {
           <div>
             <div className="flex items-center space-x-4 mb-2">
               <h1 className="text-4xl font-bold text-gray-900">My Trips</h1>
-              <DebugStatus />
+              <MinimalDebugStatus />
               {/* Simple debug test */}
               <div style={{
                 padding: '4px 8px',

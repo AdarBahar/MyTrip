@@ -2,9 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import '@/styles/globals.css'
 import { Providers } from '@/components/providers'
-import { DebugPanel, DevIndicator } from '@/components/debug'
-import { SimpleDebugToggle } from '@/components/debug/simple-debug-toggle'
-import { BasicDebugIndicator } from '@/components/basic-debug-indicator'
+import { MinimalDebugToggle, MinimalDebugPanel } from '@/components/minimal-debug'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -26,14 +24,9 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           {children}
-          {/* Global Debug Panel - Available on all pages during development */}
-          <DebugPanel />
-          {/* Development Environment Indicator */}
-          <DevIndicator position="top-right" showApiCount={true} />
-          {/* Simple Debug Toggle - Highly visible for testing */}
-          <SimpleDebugToggle />
-          {/* Basic Debug Indicator - Fallback */}
-          <BasicDebugIndicator />
+          {/* Minimal Debug System - No external dependencies */}
+          <MinimalDebugToggle />
+          <MinimalDebugPanel />
         </Providers>
       </body>
     </html>
