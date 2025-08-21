@@ -3,19 +3,18 @@ Trip schemas
 """
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.trip import TripStatus, TripMemberRole, TripMemberStatus
 
 
 class TripCreator(BaseModel):
     """Trip creator user info"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     email: str
     display_name: str
-
-    class Config:
-        from_attributes = True
 
 
 class TripBase(BaseModel):
@@ -63,6 +62,8 @@ class TripMemberCreate(TripMemberBase):
 
 class TripMember(TripMemberBase):
     """Trip member schema"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     trip_id: str
     user_id: Optional[str] = None
@@ -70,12 +71,11 @@ class TripMember(TripMemberBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class Trip(TripBase):
     """Trip schema"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     created_by: str
     deleted_at: Optional[datetime] = None
@@ -85,9 +85,6 @@ class Trip(TripBase):
     # Optional relationships
     members: Optional[List[TripMember]] = None
     created_by_user: Optional[TripCreator] = None
-
-    class Config:
-        from_attributes = True
 
 
 class TripList(BaseModel):

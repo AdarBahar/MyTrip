@@ -2,7 +2,7 @@
 Authentication schemas
 """
 from typing import Optional
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 
 class UserProfile(BaseModel):
@@ -27,10 +27,9 @@ class LoginResponse(BaseModel):
 
 class CurrentUser(BaseModel):
     """Current user schema for dependency injection"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     email: str
     display_name: str
     status: str
-
-    class Config:
-        from_attributes = True

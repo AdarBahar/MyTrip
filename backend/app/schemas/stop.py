@@ -3,7 +3,7 @@ Stop schemas
 """
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.stop import StopKind
 
@@ -33,14 +33,13 @@ class StopUpdate(BaseModel):
 
 class Stop(StopBase):
     """Stop schema"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     day_id: str
     trip_id: str
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class StopList(BaseModel):
@@ -52,22 +51,21 @@ class StopsUpdate(BaseModel):
     """Schema for updating multiple stops"""
     stops: List[StopCreate] = Field(..., min_items=2)
 
-    class Config:
-        # Validate that there's exactly one start and one end
-        @classmethod
-        def validate_stops(cls, v):
-            starts = [s for s in v if s.kind == StopKind.START]
-            ends = [s for s in v if s.kind == StopKind.END]
+    @classmethod
+    def validate_stops(cls, v):
+        """Validate that there's exactly one start and one end"""
+        starts = [s for s in v if s.kind == StopKind.START]
+        ends = [s for s in v if s.kind == StopKind.END]
 
-            if len(starts) != 1:
-                raise ValueError("Exactly one start stop is required")
-            if len(ends) != 1:
-                raise ValueError("Exactly one end stop is required")
-            if starts[0].seq != 1:
-                raise ValueError("Start stop must have seq=1")
-            if not starts[0].fixed:
-                raise ValueError("Start stop must be fixed")
-            if not ends[0].fixed:
-                raise ValueError("End stop must be fixed")
+        if len(starts) != 1:
+            raise ValueError("Exactly one start stop is required")
+        if len(ends) != 1:
+            raise ValueError("Exactly one end stop is required")
+        if starts[0].seq != 1:
+            raise ValueError("Start stop must have seq=1")
+        if not starts[0].fixed:
+            raise ValueError("Start stop must be fixed")
+        if not ends[0].fixed:
+            raise ValueError("End stop must be fixed")
 
-            return v
+        return v

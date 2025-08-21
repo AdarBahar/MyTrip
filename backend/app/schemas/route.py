@@ -3,7 +3,7 @@ Route schemas
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class RoutePoint(BaseModel):
@@ -44,6 +44,8 @@ class RouteCommitRequest(BaseModel):
 
 class RouteLegSchema(BaseModel):
     """Route leg schema"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     route_version_id: str
     seq: int
@@ -54,12 +56,11 @@ class RouteLegSchema(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class RouteVersionSchema(BaseModel):
     """Route version schema"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     day_id: str
     version: int
@@ -78,9 +79,6 @@ class RouteVersionSchema(BaseModel):
 
     # Optional relationships
     legs: Optional[List[RouteLegSchema]] = None
-
-    class Config:
-        from_attributes = True
 
 
 class RouteVersionList(BaseModel):

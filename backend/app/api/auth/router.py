@@ -69,12 +69,6 @@ async def fake_login(
     )
 
 
-@router.post("/logout")
-async def logout():
-    """Logout endpoint (fake implementation)"""
-    return {"message": "Logged out successfully"}
-
-
 @router.get("/me", response_model=UserProfile)
 async def get_current_user_profile(
     current_user: User = Depends(get_current_user)

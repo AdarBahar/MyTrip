@@ -100,9 +100,10 @@ class TestAuthLogin:
         """Test that login requires JSON content type"""
         response = client.post(
             "/auth/login",
-            data="email=test@example.com"  # Form data instead of JSON
+            content="email=test@example.com",  # Form data instead of JSON
+            headers={"content-type": "application/x-www-form-urlencoded"}
         )
-        
+
         assert response.status_code == 422
 
     def test_login_generates_valid_token_format(self, client: TestClient):

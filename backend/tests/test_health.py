@@ -176,20 +176,20 @@ class TestErrorHandling:
         """Test 422 for invalid JSON in request body"""
         response = client.post(
             "/trips/",
-            data="invalid json",
+            content="invalid json",
             headers={**auth_headers, "content-type": "application/json"}
         )
-        
+
         assert response.status_code == 422
 
     def test_unsupported_media_type(self, client: TestClient, auth_headers: dict):
         """Test 415 for unsupported media type"""
         response = client.post(
             "/trips/",
-            data="some data",
+            content="some data",
             headers={**auth_headers, "content-type": "text/plain"}
         )
-        
+
         # Should return 422 or 415 for unsupported content type
         assert response.status_code in [415, 422]
 

@@ -2,7 +2,7 @@
 Application configuration settings
 """
 from typing import List
-from pydantic import Field
+from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -80,9 +80,10 @@ class Settings(BaseSettings):
                 f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
             )
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True
+    )
 
 
 # Global settings instance
