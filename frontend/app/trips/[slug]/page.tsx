@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, MapPin, Calendar, Users, Settings, Share2, Plus } from 'lucide-react'
 import { fetchWithAuth } from '@/lib/auth'
+import { DebugStatus } from '@/components/debug'
 
 interface TripCreator {
   id: string
@@ -121,7 +122,10 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
           </Button>
           
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">{trip.title}</h1>
+            <div className="flex items-center space-x-4 mb-1">
+              <h1 className="text-3xl font-bold text-gray-900">{trip.title}</h1>
+              <DebugStatus />
+            </div>
             <p className="text-gray-600">Trip to {trip.destination}</p>
           </div>
           
@@ -216,9 +220,11 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                   Plan your daily itinerary and routes
                 </CardDescription>
               </div>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Day
+              <Button asChild>
+                <Link href={`/trips/${trip.slug}/days`}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Manage Days
+                </Link>
               </Button>
             </div>
           </CardHeader>
@@ -229,9 +235,11 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
               <p className="text-gray-600 mb-6">
                 Start planning your trip by adding your first day
               </p>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Day
+              <Button asChild>
+                <Link href={`/trips/${trip.slug}/days`}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Start Planning Days
+                </Link>
               </Button>
             </div>
           </CardContent>

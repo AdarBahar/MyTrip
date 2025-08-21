@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Plus, MapPin, Users, Calendar, LogOut } from 'lucide-react'
 import { fetchWithAuth } from '@/lib/auth'
+import { DebugStatus } from '@/components/debug'
 
 interface TripCreator {
   id: string
@@ -102,7 +103,10 @@ export default function TripsPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">My Trips</h1>
+            <div className="flex items-center space-x-4 mb-2">
+              <h1 className="text-4xl font-bold text-gray-900">My Trips</h1>
+              <DebugStatus />
+            </div>
             <p className="text-gray-600">
               Welcome back, {user?.display_name || 'User'}! Plan and manage your road trip adventures
             </p>

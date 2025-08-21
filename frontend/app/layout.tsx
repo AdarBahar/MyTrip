@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import '@/styles/globals.css'
 import { Providers } from '@/components/providers'
+import { DebugPanel, DevIndicator } from '@/components/debug'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -23,6 +24,10 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           {children}
+          {/* Global Debug Panel - Available on all pages during development */}
+          <DebugPanel />
+          {/* Development Environment Indicator */}
+          <DevIndicator position="top-right" showApiCount={true} />
         </Providers>
       </body>
     </html>

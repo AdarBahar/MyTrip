@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { DebugPanel, DebugToggle, DebugStatus } from '@/components/debug';
+import { DebugPanel, DebugToggle, DebugStatus, ApiMonitor } from '@/components/debug';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -143,6 +143,11 @@ export default function DebugDemoPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* API Monitor */}
+      <div className="mb-8">
+        <ApiMonitor />
+      </div>
 
       {/* Features Overview */}
       <div className="grid md:grid-cols-2 gap-6 mb-8">
