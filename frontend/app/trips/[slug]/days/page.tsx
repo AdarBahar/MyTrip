@@ -8,6 +8,7 @@
 import React from 'react';
 import { useParams } from 'next/navigation';
 import { DaysList } from '@/components/days';
+import { DebugPanel, DebugStatus } from '@/components/debug';
 import { Day, Trip } from '@/types';
 
 // Mock trip data for demonstration
@@ -41,12 +42,15 @@ export default function TripDaysPage() {
     <div className="container mx-auto px-4 py-8">
       {/* Page Header */}
       <div className="mb-8">
-        <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
-          <span>Trips</span>
-          <span>/</span>
-          <span>{mockTrip.title}</span>
-          <span>/</span>
-          <span className="text-gray-900 font-medium">Days</span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-2 text-sm text-gray-500">
+            <span>Trips</span>
+            <span>/</span>
+            <span>{mockTrip.title}</span>
+            <span>/</span>
+            <span className="text-gray-900 font-medium">Days</span>
+          </div>
+          <DebugStatus />
         </div>
         <h1 className="text-3xl font-bold text-gray-900">{mockTrip.title}</h1>
         <p className="text-gray-600 mt-1">Plan your day-by-day itinerary</p>
@@ -88,6 +92,9 @@ export default function TripDaysPage() {
           </div>
         </div>
       </div>
+
+      {/* Debug Panel */}
+      <DebugPanel />
     </div>
   );
 }
