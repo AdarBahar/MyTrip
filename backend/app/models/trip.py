@@ -12,10 +12,11 @@ from app.models.base import BaseModel, SoftDeleteMixin
 
 
 class TripStatus(str, enum.Enum):
-    DRAFT = "draft"
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    ARCHIVED = "archived"
+    """Trip status enumeration"""
+    DRAFT = "draft"        # Trip is being planned
+    ACTIVE = "active"      # Trip is currently happening or confirmed
+    COMPLETED = "completed"  # Trip has been completed
+    ARCHIVED = "archived"  # Trip has been archived
 
 
 class TripMemberRole(str, enum.Enum):

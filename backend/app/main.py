@@ -22,9 +22,19 @@ from app.api.routing.router import router as routing_router
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="RoadTrip Planner API",
+    title="MyTrip - Road Trip Planner API",
     description="""
     A comprehensive road trip planning API with route optimization and user authentication.
+
+    ## Features
+
+    - ✅ **Trip Management**: Create, view, and manage road trips
+    - ✅ **Flexible Dates**: Optional start dates for trip planning
+    - ✅ **Auto-Generated Slugs**: URL-friendly trip identifiers
+    - ✅ **Trip Statuses**: Draft, Active, Completed, Archived
+    - ✅ **User Authentication**: Secure Bearer token authentication
+    - ✅ **Route Planning**: Integration with GraphHopper routing
+    - ✅ **Collaborative Planning**: Multi-user trip management
 
     ## Authentication
 
@@ -43,10 +53,25 @@ app = FastAPI(
          -H "Content-Type: application/json" \\
          -d '{"email": "adar.bahar@gmail.com"}'
 
-    # 2. Use the token for authenticated requests
+    # 2. Create a new trip (start_date is optional)
+    curl -X POST "http://localhost:8100/trips/" \\
+         -H "Authorization: Bearer fake_token_YOUR_TOKEN_HERE" \\
+         -H "Content-Type: application/json" \\
+         -d '{"title": "My Road Trip", "destination": "California, USA"}'
+
+    # 3. List your trips
     curl -X GET "http://localhost:8100/trips/" \\
          -H "Authorization: Bearer fake_token_YOUR_TOKEN_HERE"
     ```
+
+    ## Trip Creation
+
+    When creating trips:
+    - **title** is required (1-255 characters)
+    - **destination** is optional (max 255 characters)
+    - **start_date** is optional (format: YYYY-MM-DD)
+    - **slug** is auto-generated from the title
+    - **status** defaults to "draft"
 
     **Development Note**: This is a development authentication system. Any valid email address can be used to login and will automatically create a user account.
     """,

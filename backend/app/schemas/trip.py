@@ -31,12 +31,12 @@ class TripBase(BaseModel):
 
 class TripCreate(BaseModel):
     """Schema for creating a trip"""
-    title: str = Field(..., min_length=1, max_length=255)
-    destination: Optional[str] = Field(None, max_length=255)
-    start_date: Optional[date] = None
-    timezone: Optional[str] = Field(None, max_length=50)
-    status: TripStatus = TripStatus.DRAFT
-    is_published: bool = False
+    title: str = Field(..., min_length=1, max_length=255, description="Trip title (required)")
+    destination: Optional[str] = Field(None, max_length=255, description="Trip destination (optional)")
+    start_date: Optional[date] = Field(None, description="Trip start date (optional) - format: YYYY-MM-DD")
+    timezone: Optional[str] = Field(None, max_length=50, description="Trip timezone (optional, defaults to UTC)")
+    status: TripStatus = Field(TripStatus.DRAFT, description="Trip status (defaults to 'draft')")
+    is_published: bool = Field(False, description="Whether the trip is published (defaults to false)")
 
 
 class TripUpdate(BaseModel):
