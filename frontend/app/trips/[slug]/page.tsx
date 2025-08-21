@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, MapPin, Calendar, Users, Settings, Share2, Plus } from 'lucide-react'
 import { fetchWithAuth } from '@/lib/auth'
 import { DebugStatus } from '@/components/debug'
+import { TripDateActions } from '@/components/trips/trip-date-actions'
 
 interface TripCreator {
   id: string
@@ -162,25 +163,11 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex items-center gap-3">
-                <Calendar className="h-5 w-5 text-gray-500" />
-                <div>
-                  <p className="font-medium">Start Date</p>
-                  {trip.start_date ? (
-                    <div className="flex items-center gap-2">
-                      <p className="text-gray-600">{new Date(trip.start_date).toLocaleDateString()}</p>
-                      <Button variant="outline" size="sm" className="text-xs">
-                        Update date
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <p className="text-gray-500 italic">No date set</p>
-                      <Button variant="outline" size="sm" className="text-xs">
-                        Set start date
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                <TripDateActions
+                  trip={trip}
+                  onTripUpdate={(updatedTrip) => setTrip(updatedTrip)}
+                  size="sm"
+                />
               </div>
               
               <div className="flex items-center gap-3">

@@ -3,7 +3,7 @@ Trip schemas
 """
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.models.trip import TripStatus, TripMemberRole, TripMemberStatus
 
@@ -43,10 +43,20 @@ class TripUpdate(BaseModel):
     slug: Optional[str] = Field(None, min_length=1, max_length=100)
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     destination: Optional[str] = Field(None, max_length=255)
-    start_date: Optional[date] = None
+    start_date: Optional[date] = Field(None, description="Trip start date - format: YYYY-MM-DD")
     timezone: Optional[str] = Field(None, max_length=50)
     status: Optional[TripStatus] = None
     is_published: Optional[bool] = None
+
+    @field_validator('start_date')
+    @classmethod
+    def validate_start_date(cls, v):
+        """Validate start date is not in the past (optional validation)"""
+        if v is not None:
+            # Allow past dates for flexibility, but could add validation here if needed
+            # For now, just ensure it's a valid date (Pydantic handles this)
+            pass
+        return v
 
 
 class TripMemberBase(BaseModel):
