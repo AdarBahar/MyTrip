@@ -58,14 +58,14 @@ export interface DayCreate {
   seq?: number;
   status?: DayStatus;
   rest_day?: boolean;
-  notes?: Record<string, any>;
+  notes?: Record<string, any> | null;
 }
 
 export interface DayUpdate {
   seq?: number;
   status?: DayStatus;
   rest_day?: boolean;
-  notes?: Record<string, any>;
+  notes?: Record<string, any> | null;
 }
 
 // API Response types
