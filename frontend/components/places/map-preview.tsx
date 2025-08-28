@@ -15,7 +15,7 @@ interface MapPreviewProps {
   height?: number; // px
   className?: string;
   interactive?: boolean; // allow pan/zoom
-  extraMarkers?: { id: string; lat: number; lon: number; color?: string }[]; // search results markers
+  extraMarkers?: { id: string; lat: number; lon: number; color?: string; label?: string }[]; // search results markers
   overlayText?: string | null; // e.g., search query
 }
 
@@ -91,9 +91,18 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
       let mk = existing.get(key) || null;
       if (!mk) {
         mk = new maptilersdk.Marker({ color: m.color || '#f59e0b' }).setLngLat(lngLat).addTo(map);
+        if (m.label) {
+          const popup = new maptilersdk.Popup({ offset: 12 }).setText(m.label);
+          mk.setPopup(popup);
+        }
         existing.set(key, mk);
       } else {
         mk.setLngLat(lngLat);
+        if (m.label) {
+          const popup = mk.getPopup() || new maptilersdk.Popup({ offset: 12 });
+          popup.setText(m.label);
+          mk.setPopup(popup);
+        }
       }
     }
 
@@ -149,6 +158,40 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
               : null);
 
         if (coords) {
+
+      // Also include simple markers for start/end/waypoints with labels
+      const labelFor = (p?: Place | null) => {
+        if (!p) return ''
+        const parts = [p.name, p.address].filter(Boolean)
+        return parts.join(' — ')
+      }
+      const basicMarkers: { id: string; lat: number; lon: number; color?: string; label?: string }[] = []
+      if (start) basicMarkers.push({ id: `start-${start.id}`, lat: start.lat, lon: start.lon, color: '#16a34a', label: labelFor(start) })
+      for (const w of waypoints || []) basicMarkers.push({ id: `wp-${w.id}`, lat: w.lat, lon: w.lon, color: '#f59e0b', label: labelFor(w) })
+      if (end) basicMarkers.push({ id: `end-${end.id}`, lat: end.lat, lon: end.lon, color: '#dc2626', label: labelFor(end) })
+      const merged = [...(extraMarkers || []), ...basicMarkers]
+      // Re-run markers pass with merged list
+      const existing2 = extraMarkersRef.current
+      const nextIds2 = new Set(merged.map(m => m.id))
+      for (const [id, marker] of existing2) { if (!nextIds2.has(id)) { marker.remove(); existing2.delete(id) } }
+      for (const m of merged) {
+        const key = m.id
+        const lngLat: [number, number] = [m.lon, m.lat]
+        let mk = existing2.get(key) || null
+        if (!mk) {
+          mk = new maptilersdk.Marker({ color: m.color || '#2563eb' }).setLngLat(lngLat).addTo(map)
+          if (m.label) mk.setPopup(new maptilersdk.Popup({ offset: 12 }).setText(m.label))
+          existing2.set(key, mk)
+        } else {
+          mk.setLngLat(lngLat)
+          if (m.label) {
+            const popup = mk.getPopup() || new maptilersdk.Popup({ offset: 12 })
+            popup.setText(m.label)
+            mk.setPopup(popup)
+          }
+        }
+      }
+
           const srcId = `${baseId}-src`;
           const lyrId = `${baseId}-lyr`;
           const geojson = { type: 'FeatureCollection', features: [
