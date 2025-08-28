@@ -57,13 +57,13 @@ export default function InlineAddStop({ tripId, dayId, dayCenter, onAdded, onCan
     const existing = await listStops(tripId, dayId);
     const seq = getNextSequenceNumber(existing.stops as any);
 
-    // Ensure place exists in backend; if not, create it
+    // Ensure place exists in backend; prefer creating to avoid 404 noise for external IDs
     let placeId = picked.id;
     try {
-      await getPlace(placeId);
-    } catch {
       const created = await createPlace({ name: picked.name || name, address: picked.address || name, lat: picked.lat, lon: picked.lon, meta: { source: 'inline-add' } });
       placeId = created.id;
+    } catch (e) {
+      // If create fails (e.g., duplicate constraints), last attempt: keep original id
     }
 
     try {
