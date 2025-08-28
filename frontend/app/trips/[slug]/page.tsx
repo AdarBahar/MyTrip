@@ -517,6 +517,18 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
           <CardContent>
             {summaryDays.length > 0 ? (
               <MapPreview
+                extraMarkers={([...
+                  summaryDays].sort((a,b)=>a.seq-b.seq).flatMap((d) => {
+                  const loc = (dayLocations as any)[d.id]
+                  const stops = (loc?.stops || []) as any[]
+                  return stops.map((s, idx) => ({
+                    id: `${d.id}:${s.id || s.place_id || idx}`,
+                    lat: s.place?.lat ?? s.lat,
+                    lon: s.place?.lon ?? s.lon,
+                    color: '#111827',
+                    label: [s.place?.name, s.place?.address].filter(Boolean).join(' — ')
+                  }))
+                })}
                 routes={([...
                   summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
                   const loc = (dayLocations as any)[d.id]

@@ -454,7 +454,11 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
                   onChange={async () => {
                     await fetchDayLocations(trip.id, day.id)
                     try {
-                      const { getDayActiveSummary } = await import('@/lib/api/routing')
+                      // Recompute and commit the route after stops change
+                      const { throttledComputeDayRoute, commitDayRouteWithFallback, getDayActiveSummary } = await import('@/lib/api/routing')
+                      const preview = await throttledComputeDayRoute(day.id, { optimize: false })
+                      await commitDayRouteWithFallback(day.id, preview.preview_token, 'Default', { optimize: false })
+                      // Refresh lightweight summary and broadcast update
                       const s = await getDayActiveSummary(day.id)
                       const loc = {
                         start: s.start || null,
