@@ -4,18 +4,44 @@ Test configuration and fixtures
 import pytest
 import asyncio
 import os
+import sys
 from typing import Generator, AsyncGenerator
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# Set test environment variables before importing app
-os.environ["DB_CLIENT"] = "sqlite"
-os.environ["DB_HOST"] = ":memory:"
-os.environ["DB_NAME"] = "test"
-os.environ["DB_USER"] = "test"
-os.environ["DB_PASSWORD"] = "test"
+
+# Import test detection utility
+try:
+    from app.core.test_detection import is_running_tests, warn_if_test_config_leaked
+except ImportError:
+    # Fallback if the utility is not available
+    def is_running_tests() -> bool:
+        """Fallback test detection"""
+        return (
+            "pytest" in sys.modules or
+            "pytest" in sys.argv[0] if sys.argv else False or
+            any("pytest" in str(arg) for arg in sys.argv) or
+            os.environ.get("PYTEST_CURRENT_TEST") is not None
+        )
+
+    def warn_if_test_config_leaked() -> None:
+        """Fallback warning function"""
+        pass
+
+
+# Only set test environment variables when actually running tests
+if is_running_tests():
+    print("🧪 Test environment detected - configuring SQLite database")
+    os.environ["DB_CLIENT"] = "sqlite"
+    os.environ["DB_HOST"] = ":memory:"
+    os.environ["DB_NAME"] = "test"
+    os.environ["DB_USER"] = "test"
+    os.environ["DB_PASSWORD"] = "test"
+else:
+    print("⚠️  conftest.py imported outside of test environment")
+    warn_if_test_config_leaked()
 
 from app.main import app
 from app.core.database import get_db
@@ -47,8 +73,16 @@ def override_get_db():
         db.close()
 
 
-# Override the database dependency
-app.dependency_overrides[get_db] = override_get_db
+# Only override the database dependency when actually running tests
+if is_running_tests():
+    print("🧪 Overriding database dependency for tests (SQLite in-memory)")
+    app.dependency_overrides[get_db] = override_get_db
+else:
+    print("✅ Skipping database override - not in test environment")
+    # Ensure no test overrides are accidentally applied
+    if get_db in app.dependency_overrides:
+        print("⚠️  WARNING: Removing existing database override that shouldn't be there!")
+        del app.dependency_overrides[get_db]
 
 
 @pytest.fixture(scope="session")
@@ -167,3 +201,41 @@ def multiple_test_trips(db_session, test_user):
         db_session.refresh(trip)
 
     return trips
+
+
+@pytest.fixture
+def test_day(db_session, test_trip):
+    """Create a test day"""
+    from app.models.day import Day, DayStatus
+
+    day = Day(
+        trip_id=test_trip.id,
+        seq=1,
+        status=DayStatus.ACTIVE,
+        rest_day=False,
+        notes={"description": "Test day"}
+    )
+    db_session.add(day)
+    db_session.commit()
+    db_session.refresh(day)
+    return day
+
+
+@pytest.fixture
+def test_place(db_session, test_user):
+    """Create a test place"""
+    from app.models.place import Place, OwnerType
+
+    place = Place(
+        owner_type=OwnerType.USER,
+        owner_id=test_user.id,
+        name="Test Restaurant",
+        address="123 Main St, Test City, TS 12345",
+        lat=40.7128,
+        lon=-74.0060,
+        meta={"type": "restaurant", "cuisine": "american"}
+    )
+    db_session.add(place)
+    db_session.commit()
+    db_session.refresh(place)
+    return place

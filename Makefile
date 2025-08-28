@@ -34,12 +34,13 @@ help:
 	@echo "  install      - Install dependencies for both backend and frontend"
 	@echo "  lint         - Run linting for both backend and frontend"
 	@echo "  format       - Format code for both backend and frontend"
+	@echo "  check.config - Validate application configuration"
 
 # Docker Compose commands
 up:
 	docker-compose up -d
 	@echo "Services started. Access:"
-	@echo "  Frontend: http://localhost:3000"
+	@echo "  Frontend: http://localhost:3500"
 	@echo "  Backend API: http://localhost:8000"
 	@echo "  API Docs: http://localhost:8000/docs"
 	@echo "  Note: Using external MySQL database"
@@ -110,6 +111,11 @@ test.trips:
 	@echo "🧪 Running trips API tests..."
 	cd backend && python run_tests.py trips --verbose
 
+test.trip-dates:
+	@echo "🧪 Running trip date management tests..."
+	cd backend && python run_tests.py trips --verbose
+	cd frontend && pnpm test -- tests/components/trips tests/lib/api/trips.test.ts tests/integration/trip-date-management.test.tsx
+
 test.routing:
 	@echo "🧪 Running routing API tests..."
 	cd backend && python run_tests.py routing --verbose
@@ -137,6 +143,11 @@ test.e2e:
 test.watch:
 	@echo "🧪 Running tests in watch mode..."
 	cd backend && pytest --tb=short -f
+
+# Configuration validation
+check.config:
+	@echo "🔍 Validating application configuration..."
+	cd backend && python scripts/check_config.py
 
 # Setup commands for new developers
 setup:

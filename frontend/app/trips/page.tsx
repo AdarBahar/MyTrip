@@ -8,6 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Plus, MapPin, Users, Calendar, LogOut } from 'lucide-react'
 import { fetchWithAuth } from '@/lib/auth'
+import { getApiBase } from '@/lib/api/base'
+import { MinimalDebugToggle } from '@/components/minimal-debug'
+import { TripDateBadge } from '@/components/trips/trip-date-actions'
 
 interface TripCreator {
   id: string
@@ -60,7 +63,7 @@ export default function TripsPage() {
 
   const fetchTrips = async () => {
     try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8100'
+      const apiBaseUrl = await getApiBase()
       const response = await fetchWithAuth(`${apiBaseUrl}/trips/`)
 
       if (!response.ok) {
@@ -102,7 +105,9 @@ export default function TripsPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">My Trips</h1>
+            <div className="flex items-center space-x-4 mb-2">
+              <h1 className="text-4xl font-bold text-gray-900">My Trips</h1>
+            </div>
             <p className="text-gray-600">
               Welcome back, {user?.display_name || 'User'}! Plan and manage your road trip adventures
             </p>
@@ -166,9 +171,12 @@ export default function TripsPage() {
                     <div>
                       <CardTitle className="text-xl mb-1">{trip.title}</CardTitle>
                       <p className="text-gray-600 mb-2">{trip.destination}</p>
-                      <Badge variant={trip.status === 'active' ? 'default' : 'secondary'}>
-                        {trip.status.toUpperCase()}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={trip.status === 'active' ? 'default' : 'secondary'}>
+                          {trip.status.toUpperCase()}
+                        </Badge>
+                        <TripDateBadge trip={trip} editable={false} />
+                      </div>
                     </div>
                   </div>
                   <CardDescription className="mt-2">
@@ -177,15 +185,6 @@ export default function TripsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      <span>
-                        {trip.start_date
-                          ? `Starts ${new Date(trip.start_date).toLocaleDateString()}`
-                          : 'No start date'
-                        }
-                      </span>
-                    </div>
                     <div className="flex items-center gap-1">
                       <Users className="h-4 w-4" />
                       <span>{trip.members.length} members</span>

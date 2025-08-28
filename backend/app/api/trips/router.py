@@ -161,16 +161,29 @@ async def get_trip(
 async def update_trip(
     trip_id: str,
     trip_data: TripUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update a trip"""
-    trip = db.query(Trip).filter(
+    """
+    **Update Trip**
+
+    Update trip details including start date, title, destination, etc.
+
+    **Authentication Required:** You must be the trip owner.
+
+    **Note:** Updating the start_date will affect all day dates in the trip.
+    """
+    trip = db.query(Trip).options(joinedload(Trip.created_by_user)).filter(
         Trip.id == trip_id,
         Trip.deleted_at.is_(None)
     ).first()
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
+
+    # Verify ownership
+    if trip.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this trip")
 
     # Update fields
     update_data = trip_data.model_dump(exclude_unset=True)

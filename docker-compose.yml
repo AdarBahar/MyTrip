@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Note: Using external MySQL database, no local DB service needed
 
@@ -8,23 +6,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: roadtrip-backend
-    environment:
-      - APP_ENV=${APP_ENV:-dev}
-      - APP_SECRET=${APP_SECRET:-change-me}
-      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:8100}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
-      - DB_CLIENT=${DB_CLIENT:-mysql}
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT:-3306}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - GRAPHHOPPER_MODE=${GRAPHHOPPER_MODE:-cloud}
-      - GRAPHHOPPER_API_KEY=${GRAPHHOPPER_API_KEY}
-      - GRAPHHOPPER_BASE_URL=${GRAPHHOPPER_BASE_URL:-http://graphhopper:8989}
-      - MAPTILER_API_KEY=${MAPTILER_API_KEY}
+    env_file:
+      - .env
     ports:
-      - "8100:8000"
+      - "8000:8000"
     volumes:
       - ./backend:/app
     healthcheck:
@@ -38,19 +23,19 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: roadtrip-frontend
-    environment:
-      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8100}
-      - NEXT_PUBLIC_MAPTILER_API_KEY=${NEXT_PUBLIC_MAPTILER_API_KEY}
+    command: ["pnpm", "dev"]
+    env_file:
+      - .env
     ports:
-      - "3000:3000"
-    # volumes:
-      # - ./frontend:/app
-      # - /app/node_modules
-      # - /app/.next
+      - "3500:3500"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3500"]
       interval: 30s
       timeout: 10s
       retries: 3

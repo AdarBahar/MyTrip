@@ -12,6 +12,7 @@ from app.models.place import Place
 from app.models.stop import Stop
 from app.models.route import RouteVersion, RouteLeg
 from app.models.pin import Pin
+from app.models.user_setting import UserSetting
 
 __all__ = [
     "Base",

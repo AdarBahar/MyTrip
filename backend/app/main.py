@@ -10,12 +10,21 @@ from app.core.config import settings
 from app.core.database import engine
 from app.models import Base
 
+# Import test detection utility to check for configuration leaks
+try:
+    from app.core.test_detection import warn_if_test_config_leaked
+    warn_if_test_config_leaked()
+except ImportError:
+    pass  # Test detection utility not available
+
 # Import routers
 from app.api.auth.router import router as auth_router
 from app.api.trips.router import router as trips_router
 from app.api.routing.router import router as routing_router
-# from app.api.days import router as days_router
-# from app.api.stops import router as stops_router
+from app.api.days.router import router as days_router
+from app.api.stops.router import router as stops_router
+from app.api.places.router import router as places_router
+from app.api.settings.router import router as settings_router
 # from app.api.pins import router as pins_router
 
 # Create tables
@@ -29,6 +38,8 @@ app = FastAPI(
     ## Features
 
     - ✅ **Trip Management**: Create, view, and manage road trips
+    - ✅ **Days Organization**: Day-by-day trip planning with automatic date calculation
+    - ✅ **Stops Management**: Comprehensive stops system with 12 categories and detailed planning
     - ✅ **Flexible Dates**: Optional start dates for trip planning
     - ✅ **Auto-Generated Slugs**: URL-friendly trip identifiers
     - ✅ **Trip Statuses**: Draft, Active, Completed, Archived
@@ -72,6 +83,38 @@ app = FastAPI(
     - **start_date** is optional (format: YYYY-MM-DD)
     - **slug** is auto-generated from the title
     - **status** defaults to "draft"
+
+    ## Stops Management
+
+    The stops system allows detailed itinerary planning with:
+
+    ### Stop Types (12 categories):
+    - 🏨 **Accommodation**: Hotels, B&Bs, camping
+    - 🍽️ **Food**: Restaurants, cafes, bars
+    - 🎯 **Attraction**: Museums, landmarks, tours
+    - ⛽ **Gas**: Fuel stations, charging points
+    - 🛍️ **Shopping**: Stores, markets, outlets
+    - 🚗 **Transport**: Airports, train stations
+    - 🏥 **Services**: Banks, hospitals, repairs
+    - 🌲 **Nature**: Parks, trails, beaches
+    - 🎭 **Culture**: Theaters, galleries, events
+    - 🌙 **Nightlife**: Bars, clubs, entertainment
+    - 📍 **Other**: Custom locations
+
+    ### Stop Features:
+    - **Time Management**: Arrival/departure times, duration estimates
+    - **Priority Levels**: Must see (1) to Optional (5)
+    - **Booking Info**: Confirmation numbers, status tracking
+    - **Cost Tracking**: Estimated and actual expenses
+    - **Contact Details**: Phone, website, notes
+    - **Flexible Ordering**: Drag-and-drop reordering within days
+
+    ### Stop Operations:
+    - Create, read, update, delete stops
+    - Reorder stops within days
+    - Filter by type and priority
+    - Include place information
+    - Trip-wide stops summary
 
     **Development Note**: This is a development authentication system. Any valid email address can be used to login and will automatically create a user account.
     """,
@@ -118,13 +161,23 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 # Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# In dev, loosen CORS to any origin; in other envs, use configured origins
+if settings.APP_ENV.lower() == "dev":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.get("/health")
@@ -153,8 +206,10 @@ async def root():
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(trips_router, prefix="/trips", tags=["trips"])
 app.include_router(routing_router, prefix="/routing", tags=["routing"])
-# app.include_router(days_router, prefix="/days", tags=["days"])
-# app.include_router(stops_router, prefix="/stops", tags=["stops"])
+app.include_router(days_router, prefix="/trips/{trip_id}/days", tags=["days"])
+app.include_router(stops_router, prefix="/stops", tags=["stops"])
+app.include_router(places_router, prefix="/places", tags=["places"])
+app.include_router(settings_router, tags=["settings"])
 # app.include_router(pins_router, prefix="/pins", tags=["pins"])
 
 

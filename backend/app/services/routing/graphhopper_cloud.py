@@ -10,7 +10,9 @@ from app.services.routing.base import (
     RoutingProvider,
     RoutePoint,
     RouteLeg,
-    RouteResult
+    RouteResult,
+    DistanceMatrix,
+    RoutingRateLimitError,
 )
 from app.core.config import settings
 
@@ -51,9 +53,9 @@ class GraphHopperCloudProvider(RoutingProvider):
             "turn_costs": True if profile in ["car", "motorcycle"] else False
         }
 
-        # Add points
-        for i, point_str in enumerate(point_params):
-            params[f"point"] = point_str
+        # Add points as repeated query params (?point=a&point=b)
+        # httpx encodes list values as repeated keys
+        params["point"] = point_params
 
         # Add options
         if options:
@@ -89,9 +91,15 @@ class GraphHopperCloudProvider(RoutingProvider):
                     params=params,
                     timeout=30.0
                 )
+                # If rate-limited, propagate a specific error the router can map to 429
+                if response.status_code == 429:
+                    raise RoutingRateLimitError("Routing provider rate limit exceeded (GraphHopper 429)")
                 response.raise_for_status()
                 data = response.json()
 
+            except RoutingRateLimitError:
+                # Bubble up as-is
+                raise
             except httpx.HTTPError as e:
                 logger.error(f"GraphHopper API error: {e}")
                 raise Exception(f"Routing service error: {e}")
@@ -151,3 +159,49 @@ class GraphHopperCloudProvider(RoutingProvider):
 
     def supports_matrix(self) -> bool:
         return True
+
+    async def compute_matrix(
+        self,
+        points: List[RoutePoint],
+        profile: str = "car",
+        options: Optional[Dict[str, Any]] = None,
+    ) -> DistanceMatrix:
+        """Compute distance/time matrix using GraphHopper Matrix API"""
+        if len(points) < 2:
+            raise ValueError("At least 2 points are required for a matrix")
+
+        # Build points as lat,lon strings
+        locs = [f"{p.lat},{p.lon}" for p in points]
+        params = {
+            "key": self.api_key,
+            "profile": profile,
+            "out_array": ["weights", "times", "distances"],
+            "debug": False,
+        }
+        data = {"points": locs}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(
+                    f"{self.base_url}/matrix",
+                    params=params,
+                    json=data,
+                    timeout=30.0,
+                )
+                if resp.status_code == 429:
+                    raise RoutingRateLimitError("Routing provider matrix rate limit exceeded (GraphHopper 429)")
+                resp.raise_for_status()
+                m = resp.json()
+            except RoutingRateLimitError:
+                raise
+            except httpx.HTTPError as e:
+                logger.error(f"GraphHopper Matrix error: {e}")
+                raise Exception(f"Matrix service error: {e}")
+
+        distances = m.get("distances") or []  # meters
+        times = m.get("times") or []  # seconds
+
+        # Convert to km and minutes
+        distances_km = [[(d or 0) / 1000.0 for d in row] for row in distances]
+        durations_min = [[(t or 0) / 60.0 for t in row] for row in times]
+        return DistanceMatrix(distances_km=distances_km, durations_min=durations_min)

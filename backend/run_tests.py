@@ -35,7 +35,7 @@ def run_tests(test_type="all", verbose=False, coverage=False):
     elif test_type == "auth":
         cmd.append("tests/test_auth.py")
     elif test_type == "trips":
-        cmd.append("tests/test_trips.py")
+        cmd.extend(["tests/test_trips.py", "tests/test_trip_dates.py"])
     elif test_type == "routing":
         cmd.append("tests/test_routing.py")
     elif test_type == "health":
