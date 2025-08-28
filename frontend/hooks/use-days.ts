@@ -35,10 +35,10 @@ export function useDays({ tripId, includeStops = false, autoRefresh = true }: Us
 
   const fetchDays = useCallback(async () => {
     if (!tripId) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       const response = await daysApi.listDays(tripId, includeStops);
       

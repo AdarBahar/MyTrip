@@ -35,6 +35,18 @@ class RouteResult:
     debug: Dict[str, Any]
 
 
+@dataclass
+class DistanceMatrix:
+    """Distance/time matrix between points"""
+    distances_km: List[List[float]]
+    durations_min: List[List[float]]
+
+
+class RoutingRateLimitError(Exception):
+    """Raised when the upstream routing provider returns a rate-limit (HTTP 429)."""
+    pass
+
+
 class RoutingProvider(ABC):
     """Abstract base class for routing providers"""
 
@@ -75,6 +87,15 @@ class RoutingProvider(ABC):
     def supports_matrix(self) -> bool:
         """Check if provider supports distance matrix"""
         return False
+
+    async def compute_matrix(
+        self,
+        points: List[RoutePoint],
+        profile: str = "car",
+        options: Optional[Dict[str, Any]] = None,
+    ) -> DistanceMatrix:
+        """Compute a distance/time matrix. Default not implemented."""
+        raise NotImplementedError
 
     def get_supported_profiles(self) -> List[str]:
         """Get list of supported routing profiles"""

@@ -1,15 +1,11 @@
-"id": "01K365YF7N0QVENA3HQZKGH7XA",
-"email": "adar.bahar@gmail.com",
-fake_token_01K365YF7N0QVENA3HQZKGH7XA
-
-
 Todo:
+User management 
 Set start date
 edit start date
 Settings
     Delete trip
     ?
-Share
+Share a trip with user
 
 my trips:
 search (auto complete)
@@ -19,12 +15,12 @@ POI
 Start/end
 stops
 
-
-list trip:
-curl -X 'GET' \
-  'http://localhost:8100/trips/?owner=01K365YF7N0QVENA3HQZKGH7XA&page=1&size=20' \
-  -H 'accept: application/json' \
-  -H 'Authorization: Bearer fake_token_01K365YF7N0QVENA3HQZKGH7XA'
+DB cleanup 
+drop all MyTrips_ tables
+Pairing code - add time limitation to it 
 
 trip without date
-01K36AVN637DRQY6R0YAHXR0QR
+
+when ready:
+1. On fresh deploy - open settings page and allow the user to enter the relevant data (.env) + explanation on how/where to find it
+2. Sanitize inputs, security and injections

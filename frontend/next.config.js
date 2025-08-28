@@ -20,6 +20,15 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/trips/:slug/days',
+        destination: '/trips/:slug',
+        permanent: true,
+      },
+    ];
+  },
   webpack: (config) => {
     // Handle MapTiler SDK
     config.resolve.fallback = {

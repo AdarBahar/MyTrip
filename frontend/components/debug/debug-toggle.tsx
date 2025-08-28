@@ -13,16 +13,52 @@ import { Bug, Eye, EyeOff } from 'lucide-react';
 interface DebugToggleProps {
   className?: string;
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  draggable?: boolean; // allow dragging anywhere on screen
+  storageKey?: string; // persist position
 }
 
-export function DebugToggle({ 
-  className = '', 
-  position = 'bottom-left' 
+export function DebugToggle({
+  className = '',
+  position = 'bottom-left',
+  draggable = true,
+  storageKey = 'debug-toggle-pos',
 }: DebugToggleProps) {
   const [isEnabled, setIsEnabled] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [pos, setPos] = useState<{x:number,y:number}|null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [offset, setOffset] = useState<{dx:number,dy:number}>({dx:0,dy:0});
 
   useEffect(() => {
     setIsEnabled(debugManager.isDebugEnabled());
+    setMounted(true);
+    if (draggable && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number') {
+            setPos({x: parsed.x, y: parsed.y});
+          }
+        }
+      } catch {}
+      if (!pos) {
+        const margin = 16;
+        const initial = (() => {
+          switch (position) {
+            case 'top-right': return { x: window.innerWidth - 140, y: margin };
+            case 'top-left': return { x: margin, y: margin };
+            case 'bottom-right': return { x: window.innerWidth - 140, y: window.innerHeight - 56 };
+            case 'bottom-left':
+            default:
+              return { x: margin, y: window.innerHeight - 56 };
+          }
+        })();
+        setPos(initial);
+        try { localStorage.setItem(storageKey, JSON.stringify(initial)); } catch {}
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleDebugMode = () => {
@@ -50,8 +86,43 @@ export function DebugToggle({
     }
   };
 
+  const onMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    if (!draggable) return;
+    const target = e.currentTarget.getBoundingClientRect();
+    setDragging(true);
+    setOffset({ dx: e.clientX - target.left, dy: e.clientY - target.top });
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      setPos(prev => {
+        const margin = 8;
+        const width = 140; // approx button width
+        const height = 40; // approx button height
+        const x = Math.max(margin, Math.min((e.clientX - offset.dx), window.innerWidth - width - margin));
+        const y = Math.max(margin, Math.min((e.clientY - offset.dy), window.innerHeight - height - margin));
+        const p = { x, y };
+        try { localStorage.setItem(storageKey, JSON.stringify(p)); } catch {}
+        return p;
+      });
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [dragging, offset.dx, offset.dy, storageKey, draggable]);
+
   return (
-    <div className={`fixed ${getPositionClasses()} z-50 ${className}`}>
+    <div
+      className={`${!draggable ? `fixed ${getPositionClasses()}` : 'fixed'} z-50 ${className}`}
+      style={draggable && mounted && pos ? { left: pos.x, top: pos.y } as React.CSSProperties : undefined}
+      onMouseDown={onMouseDown}
+    >
       <Button
         variant={isEnabled ? "default" : "outline"}
         size="sm"

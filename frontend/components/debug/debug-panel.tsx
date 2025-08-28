@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Collapsible,
@@ -139,6 +140,9 @@ export function DebugPanel({ className = '' }: DebugPanelProps) {
                 </Button>
               </div>
             </DialogTitle>
+            <DialogDescription className="sr-only" id="debug-panel-desc">
+              Shows API requests and responses for development and debugging purposes.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-hidden">

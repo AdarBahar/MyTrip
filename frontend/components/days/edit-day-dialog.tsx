@@ -101,7 +101,7 @@ export function EditDayDialog({
       if (Object.keys(notes).length > 0) {
         dayData.notes = notes;
       } else {
-        dayData.notes = null; // Clear notes if empty
+        dayData.notes = undefined; // Clear notes if empty
       }
 
       await onUpdateDay(day.id, dayData);

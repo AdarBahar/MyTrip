@@ -135,48 +135,36 @@ export function MinimalDebugToggle() {
         fontFamily: 'system-ui, -apple-system, sans-serif'
       }}
     >
-      {/* Main toggle button */}
+      {/* Small top-right badge toggle */}
       <div
         onClick={toggleDebug}
         style={{
-          backgroundColor: isEnabled ? '#10b981' : '#ef4444',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          backgroundColor: isEnabled ? '#10b981' : '#9ca3af',
           color: 'white',
-          padding: '8px 12px',
-          borderRadius: '6px',
+          padding: '6px 10px',
+          borderRadius: '9999px',
           cursor: 'pointer',
-          fontSize: '12px',
-          fontWeight: 'bold',
+          fontSize: '11px',
+          fontWeight: 600,
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
           border: '2px solid white',
-          userSelect: 'none',
-          marginBottom: '5px'
+          userSelect: 'none'
         }}
-        title="Click to toggle debug mode"
+        title="Toggle debug mode"
       >
-        🐛 {isEnabled ? 'DEBUG ON' : 'DEBUG OFF'}
-        {apiCallCount > 0 && ` (${apiCallCount})`}
+        <span style={{ fontSize: '12px' }}>🐛</span>
+        <span>Debug</span>
+        <span style={{
+          width: '8px',
+          height: '8px',
+          borderRadius: '9999px',
+          backgroundColor: isEnabled ? '#34d399' : '#e5e7eb',
+          border: '1px solid rgba(255,255,255,0.6)'
+        }} />
       </div>
-
-      {/* Test button */}
-      {isEnabled && (
-        <div
-          onClick={testApiCall}
-          style={{
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '10px',
-            fontWeight: 'bold',
-            textAlign: 'center',
-            userSelect: 'none'
-          }}
-          title="Test API call logging"
-        >
-          TEST API
-        </div>
-      )}
     </div>
   );
 }

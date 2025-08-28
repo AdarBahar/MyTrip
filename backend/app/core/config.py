@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # CORS settings
     CORS_ORIGINS: str = Field(
-        default="http://localhost:3000",
+        default="http://localhost:3000,http://localhost:3001",
         description="Allowed CORS origins (comma-separated)"
     )
 
@@ -29,13 +29,13 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
         return self.CORS_ORIGINS
 
-    # Database settings
+    # Database settings (required in runtime environment)
     DB_CLIENT: str = Field(default="mysql", description="Database client type")
-    DB_HOST: str = Field(default="localhost", description="Database host")
+    DB_HOST: str = Field(..., description="Database host")
     DB_PORT: int = Field(default=3306, description="Database port")
-    DB_NAME: str = Field(default="roadtrip_planner", description="Database name")
-    DB_USER: str = Field(default="root", description="Database username")
-    DB_PASSWORD: str = Field(default="", description="Database password")
+    DB_NAME: str = Field(..., description="Database name")
+    DB_USER: str = Field(..., description="Database username")
+    DB_PASSWORD: str = Field(..., description="Database password")
 
     # Routing settings
     GRAPHHOPPER_MODE: str = Field(
@@ -50,9 +50,22 @@ class Settings(BaseSettings):
         default="http://graphhopper:8989",
         description="GraphHopper base URL (for selfhost mode)"
     )
+    # Routing thresholds
+    ROUTE_DETOUR_RATIO_THRESHOLD: float = Field(
+        default=1.5,
+        description="Warn when day total duration exceeds baseline by this ratio"
+    )
+    ROUTE_STOP_OFFENDER_RATIO: float = Field(
+        default=0.5,
+        description="Warn when a single VIA adds this ratio of baseline minutes"
+    )
 
     # Maps settings
     MAPTILER_API_KEY: str = Field(default="", description="MapTiler API key")
+
+    # Safety: enforce production DB host by default
+    ENFORCE_PROD_DB: bool = Field(default=True, description="Fail startup if DB_HOST differs from PROD_DB_HOST")
+    PROD_DB_HOST: str = Field(default="srv1135.hstgr.io", description="Expected production DB host when enforcement is enabled")
 
     @property
     def database_url(self) -> str:

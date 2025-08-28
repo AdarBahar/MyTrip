@@ -1,44 +1,130 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, MapPin, Calendar, Users, Settings, Share2, Plus } from 'lucide-react'
 import { fetchWithAuth } from '@/lib/auth'
-import { DebugStatus } from '@/components/debug'
+import { MinimalDebugToggle } from '@/components/minimal-debug'
 import { TripDateActions } from '@/components/trips/trip-date-actions'
-
-interface TripCreator {
-  id: string
-  email: string
-  display_name: string
-}
-
-interface Trip {
-  id: string
-  slug: string
-  title: string
-  destination: string
-  start_date: string | null
-  timezone: string
-  status: 'draft' | 'active' | 'completed' | 'archived'
-  is_published: boolean
-  created_by: string
-  created_at: string
-  updated_at: string
-  deleted_at: string | null
-  members: any[]
-  created_by_user: TripCreator | null
-}
+import { DaysList } from '@/components/days'
+import { Trip } from '@/lib/api/trips'
+import { getApiBase } from '@/lib/api/base'
+import { getDaysSummary, DayLocationsSummary } from '@/lib/api/days'
+import { getBulkDayActiveSummaries } from '@/lib/api/routing'
+import { MapPreview } from '@/components/places'
+import type { Day } from '@/types'
+import { getUserSettings, updateUserSettings } from '@/lib/api/settings'
+import { checkHealth } from '@/lib/api/health'
+import { useToast } from '@/components/ui/use-toast'
+import ManageDayRoutesDialog from '@/components/days/ManageDayRoutesDialog'
 
 export default function TripDetailPage({ params }: { params: { slug: string } }) {
   const [trip, setTrip] = useState<Trip | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [totalRouteKm, setTotalRouteKm] = useState<number | null>(null)
+  const [totalRouteMin, setTotalRouteMin] = useState<number | null>(null)
+  const [tripRouteCoords, setTripRouteCoords] = useState<[number, number][]>([])
+  const [summaryDays, setSummaryDays] = useState<Day[]>([])
+  const [showDebug, setShowDebug] = useState(false)
+  const [hoverDayId, setHoverDayId] = useState<string | null>(null)
+  const [visibleDays, setVisibleDays] = useState<Record<string, boolean>>({})
+  const [showCountrySuffix, setShowCountrySuffix] = useState(false)
+  const [hasUserSettingShowCountry, setHasUserSettingShowCountry] = useState<boolean | null>(null)
+  const [showRoutes, setShowRoutes] = useState(false)
+  const [routesDayId, setRoutesDayId] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isFullMap = (searchParams?.get('view') || '') === 'map'
+  const [fullMapHeight, setFullMapHeight] = useState<number>(0)
+  useEffect(() => {
+    if (!isFullMap) return
+    const calc = () => setFullMapHeight(Math.max(300, window.innerHeight - 120))
+    calc()
+    window.addEventListener('resize', calc)
+    return () => window.removeEventListener('resize', calc)
+  }, [isFullMap])
+  const { toast } = useToast()
+  // Initialize visibleDays from URL when in full-screen map
+  useEffect(() => {
+    if (!isFullMap) return
+    const v = (searchParams?.get('visible') || '')
+    if (!v) return
+    const ids = new Set(v.split(',').filter(Boolean))
+    setVisibleDays(prev => {
+      const next: Record<string, boolean> = { ...prev }
+      for (const d of [...summaryDays]) next[d.id] = ids.has(d.id)
+      return next
+    })
+  }, [isFullMap, searchParams, summaryDays.length])
+
+  // Keep URL in sync with day visibility while in full-screen map
+  useEffect(() => {
+    if (!isFullMap) return
+    const visible = [...summaryDays]
+      .sort((a,b)=>a.seq-b.seq)
+      .filter(d => (visibleDays[d.id] ?? true))
+      .map(d => d.id)
+    const qs = new URLSearchParams(searchParams?.toString() || '')
+    qs.set('view', 'map')
+    if (visible.length) qs.set('visible', visible.join(','))
+    else qs.delete('visible')
+    // Replace query without adding history entries
+    router.replace(`?${qs.toString()}`)
+  }, [visibleDays, isFullMap, summaryDays.length])
+
+  // Prefilled locations for DaysList summary
+  const [dayLocations, setDayLocations] = useState<Record<string, { start?: any; end?: any; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][] }>>({})
+
+
+  // Load user default for country suffix
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await getUserSettings()
+        if (typeof s.show_country_suffix === 'boolean') {
+          setShowCountrySuffix(s.show_country_suffix)
+          setHasUserSettingShowCountry(true)
+        } else {
+          setHasUserSettingShowCountry(false)
+        }
+      } catch {
+        setHasUserSettingShowCountry(false)
+      }
+    })()
+  }, [])
+
+  // If user setting not set, infer from trip places and persist once
+  useEffect(() => {
+    if (hasUserSettingShowCountry !== false) return
+    // Try to find first country code from any day's start/end
+    const days = [...(summaryDays || [])].sort((a,b) => a.seq - b.seq)
+    let cc: string | null = null
+    for (const d of days) {
+      const loc: any = (dayLocations as any)[d.id]
+      const placeCandidates = [loc?.start, loc?.end]
+      for (const p of placeCandidates) {
+        if (!p || !p.meta) continue
+        const m: any = p.meta
+        const nm: any = m.normalized?.components || {}
+        const cand = (nm.country_code || m.country_code || nm.country || m.country)
+        if (cand) { cc = String(cand).toUpperCase(); break }
+      }
+      if (cc) break
+    }
+    const inferred = cc && cc !== 'US' && cc !== 'USA'
+    const val = !!inferred
+    setShowCountrySuffix(val)
+    updateUserSettings({ show_country_suffix: val }).catch(() => {})
+    setHasUserSettingShowCountry(true)
+  }, [summaryDays, dayLocations, hasUserSettingShowCountry])
+
+  // Color palette for per-day segments
+  const dayColors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#22c55e','#eab308','#06b6d4','#f97316'] as const
 
   useEffect(() => {
     // Check authentication
@@ -47,36 +133,165 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
       router.push('/login')
       return
     }
-    
-    fetchTripDetails()
+
+    // Quick backend health check for better error messaging
+    ;(async () => {
+      const ok = await checkHealth(2500)
+      if (!ok) {
+        setError('Backend unavailable. Please check connection and try again.')
+        setLoading(false)
+        return
+      }
+      fetchTripDetails()
+    })()
   }, [params.slug])
+
+  useEffect(() => {
+    const onUpdate = (e: any) => {
+      const { dayId, loc } = e.detail || {}
+      if (!dayId || !loc) return
+      setDayLocations(prev => {
+        const next = { ...prev, [dayId]: {
+          start: loc.start || null,
+          end: loc.end || null,
+          route_total_km: loc.route_total_km ?? undefined,
+          route_total_min: loc.route_total_min ?? undefined,
+          route_coordinates: loc.route_coordinates ?? undefined,
+        } }
+        // Recompute totals and combined coords
+        let kmSum = 0; let minSum = 0; const combined: [number, number][] = []
+        for (const d of [...summaryDays].sort((a,b)=>a.seq-b.seq)) {
+          const l: any = (next as any)[d.id]
+          if (l) {
+            if (typeof l.route_total_km === 'number') kmSum += l.route_total_km
+            if (typeof l.route_total_min === 'number') minSum += l.route_total_min
+            if (l.route_coordinates && l.route_coordinates.length) combined.push(...l.route_coordinates)
+          }
+        }
+        setTotalRouteKm(combined.length ? kmSum : null)
+        setTotalRouteMin(combined.length ? minSum : null)
+        setTripRouteCoords(combined)
+        setVisibleDays(v => ({ ...v, [dayId]: !!(next[dayId]?.route_coordinates && next[dayId]!.route_coordinates!.length) }))
+        return next
+      })
+    }
+    window.addEventListener('day-summary-updated', onUpdate as any)
+    return () => window.removeEventListener('day-summary-updated', onUpdate as any)
+  }, [summaryDays])
+
+  // When a day is added, ensure it's visible in the main map breakdown and totals
+  useEffect(() => {
+    const onDayAdded = (e: any) => {
+      const { day } = e.detail || {}
+      if (!day) return
+      setSummaryDays(prev => {
+        const exists = prev.find(d => d.id === day.id)
+        if (exists) return prev
+        const next = [...prev, day]
+        // Initialize visibility off until a route exists
+        setVisibleDays(v => ({ ...v, [day.id]: false }))
+        return next
+      })
+    }
+    window.addEventListener('day-added', onDayAdded as any)
+    return () => window.removeEventListener('day-added', onDayAdded as any)
+  }, [])
 
   const fetchTripDetails = async () => {
     try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8100'
-      
+      const apiBaseUrl = await getApiBase()
+
       // First, get all trips to find the one with matching slug
       const tripsResponse = await fetchWithAuth(`${apiBaseUrl}/trips/`)
       if (!tripsResponse.ok) {
         throw new Error(`Failed to fetch trips: ${tripsResponse.status}`)
       }
-      
+
       const tripsData = await tripsResponse.json()
       const foundTrip = tripsData.trips.find((t: Trip) => t.slug === params.slug)
-      
+
       if (!foundTrip) {
         setError('Trip not found')
         return
       }
-      
-      // Now get the specific trip details
-      const tripResponse = await fetchWithAuth(`${apiBaseUrl}/trips/${foundTrip.id}`)
+
+      // Fetch trip details and days summary in parallel
+      const [tripResponse, summaryResp] = await Promise.all([
+        fetchWithAuth(`${apiBaseUrl}/trips/${foundTrip.id}`),
+        (async () => {
+          try {
+            // Prefer lightweight bulk route summaries
+            const daysResp = await fetchWithAuth(`${apiBaseUrl}/trips/${foundTrip.id}/days`)
+            if (!daysResp.ok) throw new Error('days fetch failed')
+            const daysJson = await daysResp.json()
+            const dayIds: string[] = (daysJson.days || []).map((d: any) => d.id)
+            if (!dayIds.length) return { locations: [], days: [] }
+            try {
+              const bulk = await getBulkDayActiveSummaries(dayIds)
+              // shape into the old summary format the page expects
+              const locations = bulk.summaries.map(s => ({
+                day_id: s.day_id,
+                start: s.start || null,
+                end: s.end || null,
+                route_total_km: s.route_total_km ?? undefined,
+                route_total_min: s.route_total_min ?? undefined,
+                route_coordinates: s.route_coordinates ?? undefined,
+              }))
+              return { locations, days: daysJson.days }
+            } catch {
+              const s = await getDaysSummary(foundTrip.id)
+              return s.data || null
+            }
+          } catch { return null }
+        })()
+      ])
+
       if (!tripResponse.ok) {
         throw new Error(`Failed to fetch trip details: ${tripResponse.status}`)
       }
-      
+
       const tripData = await tripResponse.json()
       setTrip(tripData)
+
+      if (summaryResp) {
+        const locs = summaryResp.locations as DayLocationsSummary[]
+        const map: Record<string, { start?: any; end?: any; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][] }> = {}
+        let kmSum = 0; let minSum = 0; let hasAny = false
+        const combined: [number, number][] = []
+        for (const l of locs) {
+          map[l.day_id] = {
+            start: l.start || null,
+            end: l.end || null,
+            route_total_km: l.route_total_km ?? undefined,
+            route_total_min: l.route_total_min ?? undefined,
+            route_coordinates: l.route_coordinates ?? undefined,
+          }
+          if (typeof l.route_total_km === 'number') { kmSum += l.route_total_km; hasAny = true }
+          if (typeof l.route_total_min === 'number') { minSum += l.route_total_min }
+          if (l.route_coordinates && l.route_coordinates.length) {
+            combined.push(...l.route_coordinates)
+          }
+        }
+        setDayLocations(map)
+        setSummaryDays(summaryResp.days as Day[])
+        if (hasAny) {
+          setTotalRouteKm(kmSum)
+          setTotalRouteMin(minSum)
+          setTripRouteCoords(combined)
+          // initialize visibility (default true) for days that have geometry
+          const initialVis: Record<string, boolean> = {}
+          for (const d of summaryResp.days as Day[]) {
+            const loc = (map as any)[d.id]
+            initialVis[d.id] = !!(loc && loc.route_coordinates && loc.route_coordinates.length)
+          }
+          setVisibleDays(initialVis)
+        } else {
+          setTotalRouteKm(null)
+          setTotalRouteMin(null)
+          setTripRouteCoords([])
+          setVisibleDays({})
+        }
+      }
     } catch (err) {
       console.error('Error fetching trip details:', err)
       setError(err instanceof Error ? err.message : 'Failed to load trip details')
@@ -99,12 +314,125 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
   if (error || !trip) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+            {/* Legend with toggles and permalink */}
+            <div className="mt-2 text-xs text-gray-600 flex items-center gap-4 flex-wrap px-4">
+              {[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => (
+                <label key={d.id} className="flex items-center gap-2 cursor-pointer"
+                  onMouseEnter={() => setHoverDayId(d.id)}
+                  onMouseLeave={() => setHoverDayId(null)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleDays[d.id] ?? true}
+                    onChange={(e) => setVisibleDays(v => ({ ...v, [d.id]: e.target.checked }))}
+                  />
+                  <span className="inline-block w-3 h-0.5" style={{ backgroundColor: dayColors[idx % dayColors.length] }} />
+                  <span>Day {d.seq}</span>
+                </label>
+              ))}
+              <Button
+                variant="outline"
+                size="xs"
+                className="ml-auto"
+                onClick={() => {
+                  try {
+                    const qs = new URLSearchParams(searchParams?.toString() || '')
+                    qs.set('view','map')
+                    const visible = [...summaryDays]
+                      .sort((a,b)=>a.seq-b.seq)
+                      .filter(d => (visibleDays[d.id] ?? true))
+                      .map(d => d.id)
+                    if (visible.length) qs.set('visible', visible.join(','))
+                    else qs.delete('visible')
+                    const url = `${window.location.origin}/trips/${trip?.slug || params.slug}?${qs.toString()}`
+                    navigator.clipboard.writeText(url)
+                  } catch {}
+                }}
+                title="Copy permalink"
+              >Copy link</Button>
+            </div>
+
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Trip Not Found</h1>
           <p className="text-gray-600 mb-6">{error || 'The requested trip could not be found.'}</p>
           <Button asChild>
             <Link href="/trips">Back to Trips</Link>
           </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (isFullMap) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="w-screen px-0 py-4">
+          <div className="flex items-center justify-between mb-3 px-4">
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/trips/${trip?.slug || params.slug}`}>
+                <ArrowLeft className="h-4 w-4 mr-2" /> Back to Trip
+              </Link>
+            </Button>
+            <div className="text-sm text-gray-700">
+              {typeof totalRouteKm === 'number' && typeof totalRouteMin === 'number' ? (
+                <span>{Math.round(totalRouteKm)} km • {Math.floor(totalRouteMin / 60)}h {Math.round(totalRouteMin % 60)}m</span>
+              ) : (
+                <span className="text-gray-400">Routing unavailable</span>
+              )}
+            </div>
+          </div>
+          <div className="rounded-md overflow-hidden px-0 relative">
+            <MapPreview
+              height={fullMapHeight || 600}
+              routes={([...
+                summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
+                const loc = (dayLocations as any)[d.id]
+                const coords = loc?.route_coordinates as [number, number][] | undefined
+                if (!coords || !coords.length || (visibleDays[d.id] === false)) return null
+                return { id: d.id, coordinates: coords, color: dayColors[idx % dayColors.length] }
+              }).filter(Boolean) as {id:string, coordinates:[number,number][], color?: string}[])}
+              interactive
+            />
+            {/* Overlay legend + toggles + permalink */}
+            <div className="absolute bottom-3 left-3 right-3 bg-white/85 backdrop-blur-sm rounded shadow p-2 text-xs text-gray-700 flex items-center gap-4 flex-wrap">
+              {[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => (
+                <label key={d.id} className="flex items-center gap-2 cursor-pointer"
+                  onMouseEnter={() => setHoverDayId(d.id)}
+                  onMouseLeave={() => setHoverDayId(null)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleDays[d.id] ?? true}
+                    onChange={(e) => setVisibleDays(v => ({ ...v, [d.id]: e.target.checked }))}
+                  />
+                  <span className="inline-block w-3 h-0.5" style={{ backgroundColor: dayColors[idx % dayColors.length] }} />
+                  <span>Day {d.seq}</span>
+                </label>
+              ))}
+              <Button
+                variant="outline"
+                size="xs"
+                className="ml-auto"
+                onClick={() => {
+                  try {
+                    const qs = new URLSearchParams(searchParams?.toString() || '')
+                    qs.set('view','map')
+                    const visible = [...summaryDays]
+                      .sort((a,b)=>a.seq-b.seq)
+                      .filter(d => (visibleDays[d.id] ?? true))
+                      .map(d => d.id)
+                    if (visible.length) qs.set('visible', visible.join(','))
+                    else qs.delete('visible')
+                    const url = `${window.location.origin}/trips/${trip?.slug || params.slug}?${qs.toString()}`
+                    navigator.clipboard.writeText(url)
+                    toast({ title: 'Link copied', description: 'Permalink to this view was copied to clipboard.' })
+                  } catch {}
+                }}
+                title="Copy permalink"
+              >Copy link</Button>
+            </div>
+          </div>
+
         </div>
       </div>
     )
@@ -121,15 +449,19 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
               Back to Trips
             </Link>
           </Button>
-          
+
           <div className="flex-1">
             <div className="flex items-center space-x-4 mb-1">
               <h1 className="text-3xl font-bold text-gray-900">{trip.title}</h1>
-              <DebugStatus />
             </div>
+                {/* Small activity indicator while recomputing trip totals/combination */}
+                {loading && (
+                  <div className="text-xs text-blue-600">Updating trip route…</div>
+                )}
+
             <p className="text-gray-600">Trip to {trip.destination}</p>
           </div>
-          
+
           <div className="flex gap-2">
             <Button variant="outline" size="sm">
               <Share2 className="h-4 w-4 mr-2" />
@@ -141,6 +473,118 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
             </Button>
           </div>
         </div>
+
+        {/* Trip Route Overview */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle>Total Trip Route</CardTitle>
+                <CardDescription>
+                  Combined driving across all days
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-4">
+                {typeof totalRouteKm === 'number' && typeof totalRouteMin === 'number' && (
+                  <div className="text-sm text-gray-700">
+                    {Math.round(totalRouteKm)} km • {Math.floor(totalRouteMin / 60)}h {Math.round(totalRouteMin % 60)}m
+                <div className="flex items-center gap-3">
+                  {typeof totalRouteKm === 'number' && typeof totalRouteMin === 'number' && (
+                    <div className="text-sm text-gray-700">
+                      {Math.round(totalRouteKm)} km • {Math.floor(totalRouteMin / 60)}h {Math.round(totalRouteMin % 60)}m
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <select className="text-xs border rounded px-1 py-0.5" value={routesDayId || ''} onChange={(e) => setRoutesDayId(e.target.value || null)}>
+                      <option value="">Select day…</option>
+                      {[...summaryDays].sort((a,b)=>a.seq-b.seq).map(d => (
+                        <option key={d.id} value={d.id}>Day {d.seq}</option>
+                      ))}
+                    </select>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      const id = routesDayId || hoverDayId || (summaryDays[0]?.id || null)
+                      if (!id) { toast({ title: 'No day selected', description: 'Choose a day to manage routes.' }); return }
+                      setRoutesDayId(id); setShowRoutes(true)
+                    }}>Manage routes</Button>
+                  </div>
+                </div>
+
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {summaryDays.length > 0 ? (
+              <MapPreview
+                routes={([...
+                  summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
+                  const loc = (dayLocations as any)[d.id]
+                  const coords = loc?.route_coordinates as [number, number][] | undefined
+                  if (!coords || !coords.length) return null
+                  return { id: d.id, coordinates: coords, color: dayColors[idx % dayColors.length] }
+                }).filter(Boolean) as {id:string, coordinates:[number,number][], color?: string}[])}
+                highlightRouteId={hoverDayId}
+                height={280}
+                className="rounded-md overflow-hidden"
+                interactive
+              />
+            ) : (
+              <div className="text-sm text-gray-500">Routing unavailable yet. Set start/end for days to see total route.</div>
+            )}
+            {/* Legend with toggles and hover */}
+            {summaryDays.length > 0 && (
+              <div className="mt-2 text-xs text-gray-600 flex items-center gap-4 flex-wrap">
+                {[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => (
+                  <label key={d.id} className="flex items-center gap-2 cursor-pointer"
+                    onMouseEnter={() => setHoverDayId(d.id)}
+                    onMouseLeave={() => setHoverDayId(null)}
+                  >
+                    <input type="checkbox" checked={visibleDays[d.id] ?? true} onChange={(e) => setVisibleDays(v => ({ ...v, [d.id]: e.target.checked }))} />
+                    <span className="inline-block w-3 h-0.5" style={{ backgroundColor: dayColors[idx % dayColors.length] }} />
+                    <span>Day {d.seq}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {/* Per-day breakdown */}
+            {summaryDays.length > 0 && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {[...summaryDays].sort((a, b) => a.seq - b.seq).map((d) => {
+                  const loc = (dayLocations as any)[d.id]
+                  const has = loc && typeof loc.route_total_km === 'number' && typeof loc.route_total_min === 'number'
+                  return (
+                    <div key={d.id} className="flex items-center justify-between text-sm text-gray-700 p-2 border rounded">
+                      <div>
+                        <span className="font-medium">Day {d.seq}</span>
+                        {d.calculated_date && (
+                          <span className="ml-2 text-gray-500">
+                            {new Date(d.calculated_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        {has ? (
+                          <span>{Math.round(loc.route_total_km)} km • {Math.floor(loc.route_total_min / 60)}h {Math.round(loc.route_total_min % 60)}m</span>
+                        ) : (
+                          <span className="text-gray-400">Routing unavailable</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {/* Full screen map CTA */}
+            {tripRouteCoords.length > 0 && (
+              <div className="mt-4 text-right">
+                <Button variant="outline" asChild>
+                  <Link href={`/trips/${trip.slug}?view=map`}>View on full-screen map</Link>
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Trip Info Card */}
         <Card className="mb-8">
@@ -169,7 +613,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                   size="sm"
                 />
               </div>
-              
+
               <div className="flex items-center gap-3">
                 <Users className="h-5 w-5 text-gray-500" />
                 <div>
@@ -177,7 +621,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                   <p className="text-gray-600">{trip.members.length} members</p>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-3">
                 <MapPin className="h-5 w-5 text-gray-500" />
                 <div>
@@ -186,7 +630,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                 </div>
               </div>
             </div>
-            
+
             {trip.created_by_user && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <p className="text-sm text-gray-500">
@@ -197,7 +641,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
           </CardContent>
         </Card>
 
-        {/* Days Section */}
+        {/* Days Section integrated (full management) */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -207,31 +651,71 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                   Plan your daily itinerary and routes
                 </CardDescription>
               </div>
-              <Button asChild>
-                <Link href={`/trips/${trip.slug}/days`}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Manage Days
-                </Link>
-              </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-12">
-              <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No days planned yet</h3>
-              <p className="text-gray-600 mb-6">
-                Start planning your trip by adding your first day
-              </p>
-              <Button asChild>
-                <Link href={`/trips/${trip.slug}/days`}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Start Planning Days
-                </Link>
-              </Button>
-            </div>
+            <DaysList
+              trip={trip}
+              className="max-w-7xl"
+              prefilledLocations={dayLocations}
+              onDayClick={(day) => console.log('day clicked', day.id)}
+              showCountrySuffix={showCountrySuffix}
+            />
+            <style jsx global>{`
+              /* Make trip day cards use the country suffix toggle via CSS var, if needed */
+            `}</style>
           </CardContent>
         </Card>
       </div>
+      <ManageDayRoutesDialog
+        dayId={routesDayId || summaryDays[0]?.id || ''}
+        open={showRoutes}
+        onOpenChange={(v)=>setShowRoutes(v)}
+        onRoutesChanged={async (rv) => {
+          const activeDayId = routesDayId || summaryDays[0]?.id
+          if (!activeDayId) return
+          try {
+            let loc: any = null
+            if (rv && (rv.geojson || typeof rv.total_km === 'number')) {
+              loc = {
+                start: (dayLocations as any)[activeDayId]?.start || null,
+                end: (dayLocations as any)[activeDayId]?.end || null,
+                route_total_km: rv.total_km ?? undefined,
+                route_total_min: rv.total_min ?? undefined,
+                route_coordinates: (rv as any).geojson?.coordinates ?? undefined,
+              }
+            } else {
+              const { getDayActiveSummary } = await import('@/lib/api/routing')
+              const s = await getDayActiveSummary(activeDayId)
+              loc = {
+                start: s.start || null,
+                end: s.end || null,
+                route_total_km: s.route_total_km ?? undefined,
+                route_total_min: s.route_total_min ?? undefined,
+                route_coordinates: s.route_coordinates ?? undefined,
+              }
+            }
+            // Update local state and totals
+            setDayLocations(prev => {
+              const next = { ...prev, [activeDayId]: loc }
+              let kmSum = 0; let minSum = 0; const combined: [number, number][] = []
+              for (const d of [...summaryDays].sort((a,b)=>a.seq-b.seq)) {
+                const l: any = (next as any)[d.id]
+                if (l) {
+                  if (typeof l.route_total_km === 'number') kmSum += l.route_total_km
+                  if (typeof l.route_total_min === 'number') minSum += l.route_total_min
+                  if (l.route_coordinates && l.route_coordinates.length) combined.push(...l.route_coordinates)
+                }
+              }
+              setTotalRouteKm(combined.length ? kmSum : null)
+              setTotalRouteMin(combined.length ? minSum : null)
+              setTripRouteCoords(combined)
+              setVisibleDays(v => ({ ...v, [activeDayId]: !!(loc.route_coordinates && loc.route_coordinates.length) }))
+              return next
+            })
+          } catch {}
+        }}
+      />
     </div>
   )
 }

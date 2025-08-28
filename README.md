@@ -79,7 +79,7 @@ The setup script will:
 
 ### Access Points
 
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3500
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 - **Database**: External MySQL server (configured in .env)

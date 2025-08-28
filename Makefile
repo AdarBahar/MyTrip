@@ -34,12 +34,13 @@ help:
 	@echo "  install      - Install dependencies for both backend and frontend"
 	@echo "  lint         - Run linting for both backend and frontend"
 	@echo "  format       - Format code for both backend and frontend"
+	@echo "  check.config - Validate application configuration"
 
 # Docker Compose commands
 up:
 	docker-compose up -d
 	@echo "Services started. Access:"
-	@echo "  Frontend: http://localhost:3000"
+	@echo "  Frontend: http://localhost:3500"
 	@echo "  Backend API: http://localhost:8000"
 	@echo "  API Docs: http://localhost:8000/docs"
 	@echo "  Note: Using external MySQL database"
@@ -142,6 +143,11 @@ test.e2e:
 test.watch:
 	@echo "🧪 Running tests in watch mode..."
 	cd backend && pytest --tb=short -f
+
+# Configuration validation
+check.config:
+	@echo "🔍 Validating application configuration..."
+	cd backend && python scripts/check_config.py
 
 # Setup commands for new developers
 setup:

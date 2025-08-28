@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict, computed_field
 
 from app.models.day import DayStatus
+from app.schemas.place import PlaceSchema
 
 
 class DayBase(BaseModel):
@@ -72,5 +73,23 @@ class DayWithStops(Day):
 class DayListWithStops(BaseModel):
     """Day list response schema with stops information"""
     days: List[DayWithStops]
+    total: int
+    trip_id: str
+
+
+class DayLocations(BaseModel):
+    day_id: str
+    start: Optional[PlaceSchema] = None
+    end: Optional[PlaceSchema] = None
+    # Optional route summary (start -> via -> end)
+    route_total_km: Optional[float] = None
+    route_total_min: Optional[float] = None
+    route_coordinates: Optional[List[List[float]]] = None  # [ [lon,lat], ... ]
+
+
+class DayListSummary(BaseModel):
+    """Days list along with start/end places for each day"""
+    days: List[Day]
+    locations: List[DayLocations]
     total: int
     trip_id: str

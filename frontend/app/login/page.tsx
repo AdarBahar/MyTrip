@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { MapPin, ArrowRight } from 'lucide-react'
 import { DebugStatus } from '@/components/debug'
 import { fetchWithAuth } from '@/lib/auth'
+import { getApiBase } from '@/lib/api/base'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('adar.bahar@gmail.com')
@@ -22,7 +23,7 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8100'
+      const apiBaseUrl = await getApiBase()
       const response = await fetchWithAuth(`${apiBaseUrl}/auth/login`, {
         method: 'POST',
         headers: {
