@@ -21,6 +21,14 @@ Pairing code - add time limitation to it
 
 trip without date
 
+
+labels:
+    hotel icon
+    restaurant icon
+    sleep
+    etc
+
+
 when ready:
 1. On fresh deploy - open settings page and allow the user to enter the relevant data (.env) + explanation on how/where to find it
 2. Sanitize inputs, security and injections

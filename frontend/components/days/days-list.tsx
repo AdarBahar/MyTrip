@@ -46,7 +46,7 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
   const [editingDay, setEditingDay] = useState<Day | null>(null);
   const [deletingDay, setDeletingDay] = useState<Day | null>(null);
   const [editingLocationDay, setEditingLocationDay] = useState<Day | null>(null);
-  const [dayLocations, setDayLocations] = useState<Record<string, { start?: Place | null; end?: Place | null; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][] }>>(prefilledLocations || {});
+  const [dayLocations, setDayLocations] = useState<Record<string, { start?: Place | null; end?: Place | null; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][]; stops?: StopWithPlace[] }>>(prefilledLocations || {});
 
   // Keep internal state in sync with parent-provided summary
   useEffect(() => {
@@ -451,8 +451,10 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
                   daySeq={day.seq}
                   maxVisible={5}
                   maxStops={20}
-                  onChange={async () => {
+                  onChange={async (stops) => {
                     await fetchDayLocations(trip.id, day.id)
+                    // store latest stops for markers
+                    setDayLocations(prev => ({ ...prev, [day.id]: { ...(prev[day.id] || {}), stops } }))
                     try {
                       // Recompute and commit the route after stops change
                       const { throttledComputeDayRoute, commitDayRouteWithFallback, getDayActiveSummary } = await import('@/lib/api/routing')
