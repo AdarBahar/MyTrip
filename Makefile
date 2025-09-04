@@ -35,10 +35,17 @@ help:
 	@echo "  lint         - Run linting for both backend and frontend"
 	@echo "  format       - Format code for both backend and frontend"
 	@echo "  check.config - Validate application configuration"
+	@echo "  graphhopper-israel - Download Israel map, clear cache, start GH (selfhost)"
+	@echo "  up-selfhost       - Start only GraphHopper (selfhost) and wait for health"
+	@echo "  down-selfhost     - Stop and remove GraphHopper (selfhost)"
+	@echo "  api-e2e           - Run full-flow API test and export artifacts"
+
+# Auto-enable selfhost GraphHopper profile when .env sets GRAPHHOPPER_MODE=selfhost
+PROFILE_FLAGS := $(shell grep -q '^GRAPHHOPPER_MODE=selfhost' .env 2>/dev/null && echo '--profile selfhost' || echo '')
 
 # Docker Compose commands
 up:
-	docker-compose up -d
+	docker-compose $(PROFILE_FLAGS) up -d
 	@echo "Services started. Access:"
 	@echo "  Frontend: http://localhost:3500"
 	@echo "  Backend API: http://localhost:8000"
@@ -49,17 +56,19 @@ down:
 	docker-compose down
 
 logs:
-	docker-compose logs -f
+	docker-compose $(PROFILE_FLAGS) logs -f
 
 restart:
-	docker-compose restart
+	# Ensure GraphHopper is included and up when in selfhost mode
+	docker-compose $(PROFILE_FLAGS) up -d graphhopper
+	docker-compose $(PROFILE_FLAGS) restart
 
 clean:
 	docker-compose down -v --remove-orphans
 	docker system prune -f
 
 build:
-	docker-compose build
+	docker-compose $(PROFILE_FLAGS) build
 
 # Database commands
 db.migrate:
@@ -79,6 +88,34 @@ dev.backend:
 
 dev.frontend:
 	cd frontend && pnpm dev
+
+# GraphHopper selfhost helpers
+.PHONY: graphhopper-israel
+graphhopper-israel:
+	curl -L -o data/graphhopper/map.osm.pbf https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf
+	rm -rf data/graphhopper/graph-cache || true
+	docker-compose --profile selfhost up -d graphhopper
+	@echo "Waiting for GraphHopper health..."
+	@until curl -fsS http://localhost:8989/health >/dev/null 2>&1; do echo "."; sleep 3; done
+	@echo "GraphHopper is healthy on :8989"
+
+.PHONY: up-selfhost
+up-selfhost:
+	docker-compose --profile selfhost up -d graphhopper
+	@echo "Waiting for GraphHopper health..."
+	@until curl -fsS http://localhost:8989/health >/dev/null 2>&1; do echo "."; sleep 3; done
+	@echo "GraphHopper is healthy on :8989"
+
+.PHONY: down-selfhost
+down-selfhost:
+	docker-compose --profile selfhost stop graphhopper || true
+	docker-compose --profile selfhost rm -f graphhopper || true
+
+.PHONY: api-e2e
+api-e2e:
+	@echo "Waiting for backend health..."
+	@until curl -fsS http://localhost:8000/health >/dev/null 2>&1; do echo "."; sleep 2; done
+	python3 tools/api_full_flow.py --base http://localhost:8000 --out .reports/api_full_flow_latest
 
 # Installation commands
 install:

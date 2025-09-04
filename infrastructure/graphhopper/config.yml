@@ -9,31 +9,34 @@ graphhopper:
   profiles:
     - name: car
       vehicle: car
-      weighting: fastest
+      weighting: custom
+      custom_model:
+        priority:
+          - if: "road_access == DESTINATION"
+            multiply_by: 0.5
+
       turn_costs: true
-    - name: motorcycle
-      vehicle: motorcycle
-      weighting: fastest
-      turn_costs: true
-    - name: bike
-      vehicle: bike
-      weighting: fastest
 
   # Routing profiles for CH
   profiles_ch:
     - profile: car
-    - profile: motorcycle
-    - profile: bike
 
   # Routing profiles for LM
   profiles_lm: []
 
-  # Web API
-  web:
-    bind_host: 0.0.0.0
-    port: 8989
+  # Custom models directory (mounted by docker-compose)
+  custom_models_directory: /data/custom_models
 
-  # Import
-  import:
-    osm:
-      ignored_highways: ferry
+  # Import settings (GraphHopper 8.x expects dotted keys)
+  import.osm.ignored_highways:
+    - ferry
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 0.0.0.0
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: 0.0.0.0

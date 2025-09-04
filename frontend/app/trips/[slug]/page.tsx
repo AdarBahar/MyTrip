@@ -79,6 +79,15 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
 
   // Prefilled locations for DaysList summary
   const [dayLocations, setDayLocations] = useState<Record<string, { start?: any; end?: any; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][]; stops?: any[] }>>({})
+  useEffect(() => {
+    const onStops = (e: any) => {
+      const { dayId, stops } = e.detail || {}
+      if (!dayId || !stops) return
+      setDayLocations(prev => ({ ...prev, [dayId]: { ...(prev[dayId] || {}), stops } }))
+    }
+    window.addEventListener('day-stops-updated', onStops as any)
+    return () => window.removeEventListener('day-stops-updated', onStops as any)
+  }, [])
 
 
   // Load user default for country suffix
@@ -471,8 +480,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
           <CardContent>
             {summaryDays.length > 0 ? (
               <MapPreview
-                extraMarkers={([...
-                  summaryDays].sort((a,b)=>a.seq-b.seq).flatMap((d) => {
+                extraMarkers={[...summaryDays].sort((a,b)=>a.seq-b.seq).flatMap((d) => {
                   const loc = (dayLocations as any)[d.id]
                   const stops = (loc?.stops || []) as any[]
                   return stops.map((s, idx) => ({
@@ -483,13 +491,12 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                     label: [s.place?.name, s.place?.address].filter(Boolean).join(' — ')
                   }))
                 })}
-                routes={([...
-                  summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
+                routes={[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
                   const loc = (dayLocations as any)[d.id]
                   const coords = loc?.route_coordinates as [number, number][] | undefined
                   if (!coords || !coords.length) return null
                   return { id: d.id, coordinates: coords, color: dayColors[idx % dayColors.length] }
-                }).filter(Boolean) as {id:string, coordinates:[number,number][], color?: string}[])}
+                }).filter(Boolean) as {id:string, coordinates:[number,number][], color?: string}[]}
                 highlightRouteId={hoverDayId}
                 height={280}
                 className="rounded-md overflow-hidden"

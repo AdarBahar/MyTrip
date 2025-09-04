@@ -41,22 +41,26 @@ services:
       retries: 3
 
   graphhopper:
-    image: graphhopper/graphhopper:8.0
+    build:
+      context: ./infrastructure/graphhopper
+      dockerfile: Dockerfile
+      args:
+        GH_VERSION: "8.0"
     container_name: roadtrip-graphhopper
     profiles:
       - selfhost
     environment:
-      - JAVA_OPTS=-Xmx1g -Xms1g
+      - JAVA_OPTS=-Xmx4g -Xms4g
     ports:
       - "8989:8989"
     volumes:
       - ./data/graphhopper:/data
       - ./infrastructure/graphhopper/config.yml:/data/config.yml
-    command: ["--input", "/data/map.osm.pbf", "--host", "0.0.0.0"]
+      - ./infrastructure/graphhopper/custom_models:/data/custom_models
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 10
 
 # No volumes needed for external MySQL database

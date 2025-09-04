@@ -5,6 +5,7 @@ import httpx
 from typing import List, Dict, Any, Optional
 from shapely.geometry import LineString
 import logging
+import asyncio
 
 from app.services.routing.base import (
     RoutingProvider,
@@ -142,4 +143,74 @@ class GraphHopperSelfHostProvider(RoutingProvider):
         return True
 
     def supports_matrix(self) -> bool:
+        # We support matrix either via Cloud (hybrid) or local approximation.
         return True
+
+    async def compute_matrix(
+        self,
+        points: List[RoutePoint],
+        profile: str = "car",
+        options: Optional[Dict[str, Any]] = None,
+    ):
+        """Compute a distance/time matrix.
+        If USE_CLOUD_MATRIX is True, delegate to Cloud Matrix (hybrid).
+        Otherwise, approximate locally using pairwise /route calls to the self-hosted server.
+        """
+        from app.services.routing.base import DistanceMatrix
+
+        n = len(points)
+        if n < 2:
+            raise ValueError("At least 2 points are required for a matrix")
+
+        if settings.USE_CLOUD_MATRIX:
+            from app.services.routing.graphhopper_cloud import GraphHopperCloudProvider
+            provider = GraphHopperCloudProvider()
+            return await provider.compute_matrix(points, profile=profile, options=options)
+
+        # Local approximation: pairwise routing for all i!=j with limited concurrency
+        distances_km = [[0.0 for _ in range(n)] for _ in range(n)]
+        durations_min = [[0.0 for _ in range(n)] for _ in range(n)]
+
+        sem = asyncio.Semaphore(4)
+
+        async def compute_pair(i: int, j: int):
+            if i == j:
+                return
+            payload = {
+                "profile": profile,
+                "points": [
+                    [points[i].lat, points[i].lon],
+                    [points[j].lat, points[j].lon],
+                ],
+                "points_encoded": False,
+                "instructions": False,
+                "calc_points": False,
+                "debug": False,
+                "elevation": False,
+                "turn_costs": True if profile in ["car", "motorcycle"] else False,
+            }
+            async with sem:
+                async with httpx.AsyncClient() as client:  # type: ignore[name-defined]
+                    try:
+                        resp = await client.post(
+                            f"{self.base_url}/route",
+                            json=payload,
+                            timeout=20.0,
+                        )
+                        resp.raise_for_status()
+                        d = resp.json()
+                        paths = d.get("paths") or []
+                        if not paths:
+                            return
+                        p0 = paths[0]
+                        distances_km[i][j] = (p0.get("distance") or 0) / 1000.0
+                        durations_min[i][j] = (p0.get("time") or 0) / 60000.0
+                    except Exception as e:
+                        logger.warning(f"Local matrix pair ({i},{j}) failed: {e}")
+                        # leave zeros
+                        return
+
+        tasks = [compute_pair(i, j) for i in range(n) for j in range(n) if i != j]
+        await asyncio.gather(*tasks)
+
+        return DistanceMatrix(distances_km=distances_km, durations_min=durations_min)

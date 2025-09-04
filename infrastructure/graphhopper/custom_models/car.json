@@ -1,0 +1,7 @@
+{
+  "priority": [
+    { "if": "road_access == DESTINATION", "multiply_by": 0.5 },
+    { "else_priority": 1.0 }
+  ]
+}
+
