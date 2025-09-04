@@ -183,11 +183,14 @@ else:
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    from app.core.config import settings as cfg
     return JSONResponse(
         content={
             "status": "healthy",
             "service": "roadtrip-planner-backend",
-            "version": "1.0.0"
+            "version": "1.0.0",
+            "routing_mode": cfg.GRAPHHOPPER_MODE,
+            "use_cloud_matrix": cfg.USE_CLOUD_MATRIX,
         }
     )
 

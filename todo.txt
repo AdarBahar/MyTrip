@@ -6,7 +6,7 @@ Settings
     Delete trip
     ?
 Share a trip with user
-
+notes count at the bottom, plus repetitions - are not counting right 
 my trips:
 search (auto complete)
 order by name, date
@@ -14,6 +14,7 @@ order by name, date
 POI
 Start/end
 stops
+add stop - button should be disabled until process is done
 
 DB cleanup 
 drop all MyTrips_ tables
@@ -32,3 +33,5 @@ labels:
 when ready:
 1. On fresh deploy - open settings page and allow the user to enter the relevant data (.env) + explanation on how/where to find it
 2. Sanitize inputs, security and injections
+
+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

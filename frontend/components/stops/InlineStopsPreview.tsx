@@ -94,8 +94,18 @@ export default function InlineStopsPreview({
 
   const handleStopAdded = async () => {
     setShowAdd(false)
+    // Reload to get the authoritative stops list (with embedded places)
     await load()
-    if (onChange) await onChange(stops)
+    // Use the freshly loaded stops, not the stale state captured at call time
+    try {
+      const resp = await listStops(tripId, dayId, { includePlaces: true })
+      const latest = resp.stops as StopWithPlace[]
+      setStops(latest)
+      try { window.dispatchEvent(new CustomEvent('stops-mutated', { detail: { dayId } })) } catch {}
+      if (onChange) await onChange(latest)
+    } catch {
+      if (onChange) await onChange(stops)
+    }
   }
 
   if (loading) {

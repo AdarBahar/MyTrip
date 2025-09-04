@@ -50,6 +50,10 @@ class Settings(BaseSettings):
         default="http://graphhopper:8989",
         description="GraphHopper base URL (for selfhost mode)"
     )
+    USE_CLOUD_MATRIX: bool = Field(
+        default=True,
+        description="When in selfhost mode, use GraphHopper Cloud Matrix for optimization"
+    )
     # Routing thresholds
     ROUTE_DETOUR_RATIO_THRESHOLD: float = Field(
         default=1.5,

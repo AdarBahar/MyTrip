@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+import logging
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
@@ -18,8 +19,11 @@ from app.schemas.stop import (
     StopWithPlace, StopTypeInfo, StopReorder, StopBulkReorder,
     StopsSummary
 )
+from app.schemas.route import RouteComputeRequest, RouteCommitRequest
+from app.api.routing.router import compute_route as routing_compute_route, commit_route as routing_commit_route
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def ensure_inherited_start_for_next_day(trip_id: str, current_day: Day, db: Session) -> Optional[Stop]:
@@ -417,6 +421,18 @@ async def create_stop(
     except Exception:
         pass
 
+    # Server-side compute+commit to ensure the active route includes the new stop
+    try:
+        logger.info(f"[stops] compute+commit start: action=add day_id={day_id}")
+        # Optimize by default, respect fixed anchors from DB
+        compute_req = RouteComputeRequest(profile='car', optimize=True, fixed_stop_ids=None)
+        preview = await routing_compute_route(day_id, compute_req, db)
+        commit_req = RouteCommitRequest(preview_token=preview.preview_token, name='Default')
+        rv = await routing_commit_route(day_id, commit_req, db)
+        logger.info(f"[stops] compute+commit ok: action=add day_id={day_id} rv={getattr(rv,'id',None)} v={getattr(rv,'version',None)} km={getattr(rv,'total_km',None)} min={getattr(rv,'total_min',None)}")
+    except Exception as e:
+        logger.warning(f"[stops] compute+commit failed: action=add day_id={day_id} err={e}")
+
     return StopSchema.model_validate(stop)
 
 
@@ -508,6 +524,17 @@ async def update_stop(
     db.commit()
     db.refresh(stop)
 
+    # Server-side compute+commit after stop update
+    try:
+        logger.info(f"[stops] compute+commit start: action=update day_id={day_id}")
+        compute_req = RouteComputeRequest(profile='car', optimize=True, fixed_stop_ids=None)
+        preview = await routing_compute_route(day_id, compute_req, db)
+        commit_req = RouteCommitRequest(preview_token=preview.preview_token, name='Default')
+        rv = await routing_commit_route(day_id, commit_req, db)
+        logger.info(f"[stops] compute+commit ok: action=update day_id={day_id} rv={getattr(rv,'id',None)} v={getattr(rv,'version',None)} km={getattr(rv,'total_km',None)} min={getattr(rv,'total_min',None)}")
+    except Exception as e:
+        logger.warning(f"[stops] compute+commit failed: action=update day_id={day_id} err={e}")
+
     return StopSchema.model_validate(stop)
 
 
@@ -542,6 +569,17 @@ async def delete_stop(
     # Delete stop
     db.delete(stop)
     db.commit()
+
+    # Server-side compute+commit after stop delete
+    try:
+        logger.info(f"[stops] compute+commit start: action=delete day_id={day_id}")
+        compute_req = RouteComputeRequest(profile='car', optimize=True, fixed_stop_ids=None)
+        preview = await routing_compute_route(day_id, compute_req, db)
+        commit_req = RouteCommitRequest(preview_token=preview.preview_token, name='Default')
+        rv = await routing_commit_route(day_id, commit_req, db)
+        logger.info(f"[stops] compute+commit ok: action=delete day_id={day_id} rv={getattr(rv,'id',None)} v={getattr(rv,'version',None)} km={getattr(rv,'total_km',None)} min={getattr(rv,'total_min',None)}")
+    except Exception as e:
+        logger.warning(f"[stops] compute+commit failed: action=delete day_id={day_id} err={e}")
 
     return {"message": "Stop deleted successfully"}
 
@@ -602,6 +640,17 @@ async def reorder_stops(
         stop.seq = reorder.new_seq
 
     db.commit()
+
+    # Server-side compute+commit after reorder
+    try:
+        logger.info(f"[stops] compute+commit start: action=reorder day_id={day_id}")
+        compute_req = RouteComputeRequest(profile='car', optimize=True, fixed_stop_ids=None)
+        preview = await routing_compute_route(day_id, compute_req, db)
+        commit_req = RouteCommitRequest(preview_token=preview.preview_token, name='Default')
+        rv = await routing_commit_route(day_id, commit_req, db)
+        logger.info(f"[stops] compute+commit ok: action=reorder day_id={day_id} rv={getattr(rv,'id',None)} v={getattr(rv,'version',None)} km={getattr(rv,'total_km',None)} min={getattr(rv,'total_min',None)}")
+    except Exception as e:
+        logger.warning(f"[stops] compute+commit failed: action=reorder day_id={day_id} err={e}")
 
     return {"message": f"Reordered {len(reorder_data.reorders)} stops successfully"}
 

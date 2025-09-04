@@ -5,6 +5,8 @@ import httpx
 from typing import List, Dict, Any, Optional
 from shapely.geometry import LineString
 import logging
+import asyncio
+import random
 
 from app.services.routing.base import (
     RoutingProvider,
@@ -166,7 +168,7 @@ class GraphHopperCloudProvider(RoutingProvider):
         profile: str = "car",
         options: Optional[Dict[str, Any]] = None,
     ) -> DistanceMatrix:
-        """Compute distance/time matrix using GraphHopper Matrix API"""
+        """Compute distance/time matrix using GraphHopper Matrix API with retry/backoff on 429/5xx."""
         if len(points) < 2:
             raise ValueError("At least 2 points are required for a matrix")
 
@@ -180,23 +182,51 @@ class GraphHopperCloudProvider(RoutingProvider):
         }
         data = {"points": locs}
 
+        max_retries = 5
+        base_delay = 0.5
+
         async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(
-                    f"{self.base_url}/matrix",
-                    params=params,
-                    json=data,
-                    timeout=30.0,
-                )
-                if resp.status_code == 429:
-                    raise RoutingRateLimitError("Routing provider matrix rate limit exceeded (GraphHopper 429)")
-                resp.raise_for_status()
-                m = resp.json()
-            except RoutingRateLimitError:
-                raise
-            except httpx.HTTPError as e:
-                logger.error(f"GraphHopper Matrix error: {e}")
-                raise Exception(f"Matrix service error: {e}")
+            for attempt in range(1, max_retries + 1):
+                try:
+                    resp = await client.post(
+                        f"{self.base_url}/matrix",
+                        params=params,
+                        json=data,
+                        timeout=30.0,
+                    )
+                    if resp.status_code == 429:
+                        ra = resp.headers.get("Retry-After")
+                        if ra and ra.isdigit():
+                            delay = float(ra)
+                        else:
+                            delay = base_delay * (2 ** (attempt - 1))
+                        delay += random.uniform(0, 0.25)
+                        logger.warning(f"GraphHopper Matrix 429 on attempt {attempt}/{max_retries}, sleeping {delay:.2f}s")
+                        if attempt == max_retries:
+                            raise RoutingRateLimitError("Routing provider matrix rate limit exceeded (GraphHopper 429)")
+                        await asyncio.sleep(delay)
+                        continue
+
+                    if resp.status_code in (502, 503, 504):
+                        delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 0.25)
+                        logger.warning(f"GraphHopper Matrix {resp.status_code} on attempt {attempt}/{max_retries}, sleeping {delay:.2f}s")
+                        if attempt == max_retries:
+                            resp.raise_for_status()
+                        await asyncio.sleep(delay)
+                        continue
+
+                    resp.raise_for_status()
+                    m = resp.json()
+                    break
+                except RoutingRateLimitError:
+                    raise
+                except httpx.HTTPError as e:
+                    if attempt == max_retries:
+                        logger.error(f"GraphHopper Matrix error after {attempt} attempts: {e}")
+                        raise Exception(f"Matrix service error: {e}")
+                    delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 0.25)
+                    logger.warning(f"GraphHopper Matrix HTTP error on attempt {attempt}/{max_retries}, sleeping {delay:.2f}s: {e}")
+                    await asyncio.sleep(delay)
 
         distances = m.get("distances") or []  # meters
         times = m.get("times") or []  # seconds

@@ -83,7 +83,28 @@ export default function InlineAddStop({ tripId, dayId, dayCenter, onAdded, onCan
         return;
       }
     }
+
+    // Immediately recompute+commit so maps and totals reflect the new stop
+    try {
+      const { throttledComputeDayRoute, commitDayRouteWithFallback, getDayActiveSummary } = await import('@/lib/api/routing')
+      const preview = await throttledComputeDayRoute(dayId, { optimize: true })
+      await commitDayRouteWithFallback(dayId, preview.preview_token, 'Default', { optimize: false })
+      // Broadcast updated summary
+      try {
+        const s = await getDayActiveSummary(dayId)
+        const loc = {
+          start: s.start || null,
+          end: s.end || null,
+          route_total_km: s.route_total_km ?? undefined,
+          route_total_min: s.route_total_min ?? undefined,
+          route_coordinates: s.route_coordinates ?? undefined,
+        }
+        window.dispatchEvent(new CustomEvent('day-summary-updated', { detail: { dayId, loc } }))
+      } catch {}
+    } catch {}
+
     onVisualsChange && onVisualsChange('', []);
+    try { window.dispatchEvent(new CustomEvent('stops-mutated', { detail: { dayId } })) } catch {}
     if (onAdded) await onAdded();
   };
 
