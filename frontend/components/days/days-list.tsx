@@ -104,6 +104,9 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
     try {
       const res = await listStops(trip.id, dayId, { includePlaces: true });
       const stops = (res.stops as StopWithPlace[]);
+      // Store stops for markers and broadcast to main page
+      setDayLocations(prev => ({ ...prev, [dayId]: { ...(prev[dayId] || {}), stops } }))
+      try { window.dispatchEvent(new CustomEvent('day-stops-updated', { detail: { dayId, stops } })) } catch {}
       const kindOf = (s: StopWithPlace) => (typeof s.kind === 'string' ? s.kind.toLowerCase() : (s.kind as any));
       const startStopAny = stops.find(s => kindOf(s) === 'start');
       const endStopAny = stops.find(s => kindOf(s) === 'end');
@@ -117,10 +120,27 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
         const startPlace = { id: startEmbedded.id, name: startEmbedded.name, address: startEmbedded.address, lat: startEmbedded.lat, lon: startEmbedded.lon, meta: startEmbedded.meta, created_at: '', updated_at: '' } as Place;
         const endPlace = { id: endEmbedded.id, name: endEmbedded.name, address: endEmbedded.address, lat: endEmbedded.lat, lon: endEmbedded.lon, meta: endEmbedded.meta, created_at: '', updated_at: '' } as Place;
         try {
-          // Gate: no automatic compute here to avoid rate-limit hammering.
-          setDayLocations(prev => ({ ...prev, [dayId]: { start: startPlace, end: endPlace } }));
+          setDayLocations(prev => ({ ...prev, [dayId]: { ...(prev[dayId] || {}), start: startPlace, end: endPlace } }));
+          // Auto-recompute if there are at least 2 routeable points
+          const via = stops.filter(s => (typeof s.kind === 'string' ? s.kind.toLowerCase() : (s.kind as any)) === 'via')
+          const canRoute = !!startPlace && !!endPlace && (via.length >= 1 || stops.length >= 2)
+          if (canRoute) {
+            const { throttledComputeDayRoute, commitDayRouteWithFallback, getDayActiveSummary } = await import('@/lib/api/routing')
+            const preview = await throttledComputeDayRoute(dayId, { optimize: true })
+            await commitDayRouteWithFallback(dayId, preview.preview_token, 'Default', { optimize: false })
+            const s = await getDayActiveSummary(dayId)
+            const loc = {
+              start: s.start || null,
+              end: s.end || null,
+              route_total_km: s.route_total_km ?? undefined,
+              route_total_min: s.route_total_min ?? undefined,
+              route_coordinates: s.route_coordinates ?? undefined,
+            }
+            setDayLocations(prev => ({ ...prev, [dayId]: { ...(prev[dayId] || {}), ...loc } }))
+            window.dispatchEvent(new CustomEvent('day-summary-updated', { detail: { dayId, loc } }))
+          }
         } catch {
-          setDayLocations(prev => ({ ...prev, [dayId]: { start: startPlace, end: endPlace } }));
+          setDayLocations(prev => ({ ...prev, [dayId]: { ...(prev[dayId] || {}), start: startPlace, end: endPlace } }));
         }
         return;
       }
@@ -140,9 +160,27 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
         id: endEmbedded.id, name: endEmbedded.name, address: endEmbedded.address, lat: endEmbedded.lat, lon: endEmbedded.lon, meta: endEmbedded.meta, created_at: '', updated_at: ''
       } : (endStopAny?.place_id ? fetchedMap.get(endStopAny.place_id) || null : null);
 
-      // If both present, compute route preview; else just update start/end
-      // Gate compute: only update start/end; compute is user-triggered now
-      setDayLocations(prev => ({ ...prev, [dayId]: { start: startPlace || null, end: endPlace || null } }));
+      // If both present, (re)compute automatically as well
+      setDayLocations(prev => ({ ...prev, [dayId]: { ...(prev[dayId] || {}), start: startPlace || null, end: endPlace || null } }));
+      const via = stops.filter(s => (typeof s.kind === 'string' ? s.kind.toLowerCase() : (s.kind as any)) === 'via')
+      const canRoute = !!startPlace && !!endPlace && (via.length >= 1 || stops.length >= 2)
+      if (canRoute) {
+        try {
+          const { throttledComputeDayRoute, commitDayRouteWithFallback, getDayActiveSummary } = await import('@/lib/api/routing')
+          const preview = await throttledComputeDayRoute(dayId, { optimize: true })
+          await commitDayRouteWithFallback(dayId, preview.preview_token, 'Default', { optimize: false })
+          const s = await getDayActiveSummary(dayId)
+          const loc = {
+            start: s.start || null,
+            end: s.end || null,
+            route_total_km: s.route_total_km ?? undefined,
+            route_total_min: s.route_total_min ?? undefined,
+            route_coordinates: s.route_coordinates ?? undefined,
+          }
+          setDayLocations(prev => ({ ...prev, [dayId]: { ...(prev[dayId] || {}), ...loc } }))
+          window.dispatchEvent(new CustomEvent('day-summary-updated', { detail: { dayId, loc } }))
+        } catch {}
+      }
     } catch (e: any) {
       if (e?.status === 429) {
         toast({ title: 'Routing temporarily unavailable', description: 'Rate-limited by routing provider. Please try again in about a minute.', variant: 'destructive' })
@@ -159,6 +197,7 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
       setDayLocations(prev => ({
         ...prev,
         [dayId]: {
+          ...(prev[dayId] || {}),
           start: loc.start || null,
           end: loc.end || null,
           route_total_km: loc.route_total_km ?? undefined,
@@ -172,43 +211,83 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
   }, [])
 
   useEffect(() => {
+    // Respond to stop mutations by refreshing active summaries for the affected day
+    const onStopsMutated = async (e: any) => {
+      const did = e?.detail?.dayId
+      if (!did) return
+      try {
+        const { getDayActiveSummary } = await import('@/lib/api/routing')
+        const s = await getDayActiveSummary(did)
+        const loc = {
+          start: (s.start as any) || null,
+          end: (s.end as any) || null,
+          route_total_km: s.route_total_km ?? undefined,
+          route_total_min: s.route_total_min ?? undefined,
+          route_coordinates: s.route_coordinates ?? undefined,
+        }
+        setDayLocations(prev => ({ ...prev, [did]: { ...(prev[did] || {}), ...loc } }))
+      } catch {}
+    }
+    window.addEventListener('stops-mutated', onStopsMutated as any)
+
     // Prefer lightweight bulk active summaries when days exist
-    (async () => {
+    ;(async () => {
       if (!days || days.length === 0) { setDayLocations({}); return }
       try {
         const { getBulkDayActiveSummaries } = await import('@/lib/api/routing')
         const res = await getBulkDayActiveSummaries(days.map(d => d.id))
         if (res?.summaries) {
-          const map: Record<string, { start?: Place | null; end?: Place | null; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][] }> = {}
+          const base: Record<string, { start?: Place | null; end?: Place | null; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][]; stops?: StopWithPlace[] }> = {}
           for (const s of res.summaries) {
-            map[s.day_id] = {
+            base[s.day_id] = {
               start: (s.start as any) || null,
               end: (s.end as any) || null,
               route_total_km: s.route_total_km ?? undefined,
               route_total_min: s.route_total_min ?? undefined,
               route_coordinates: s.route_coordinates ?? undefined,
+              // Preserve existing stops if we already fetched them
+              stops: undefined,
             }
           }
-          setDayLocations(map)
+          setDayLocations(prev => {
+            const next: typeof base = {}
+            for (const did of Object.keys(base)) {
+              next[did] = { ...base[did], stops: (prev[did] as any)?.stops || [] }
+            }
+            return next
+          })
           return
         }
       } catch {}
+      finally {
+        window.removeEventListener('stops-mutated', onStopsMutated as any)
+      }
       // Fallback to previous summary endpoint and old per-day flow if bulk fails
       try {
         const summary = await getDaysSummary(trip.id)
         if (summary.data) {
           const locs = summary.data.locations as DayLocationsSummary[]
-          const map: Record<string, { start?: Place | null; end?: Place | null; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][] }> = {}
+          const base: Record<string, { start?: Place | null; end?: Place | null; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][]; stops?: StopWithPlace[] }> = {}
           for (const l of locs) {
-            map[l.day_id] = {
+            base[l.day_id] = {
               start: l.start || null,
               end: l.end || null,
               route_total_km: l.route_total_km ?? undefined,
               route_total_min: l.route_total_min ?? undefined,
               route_coordinates: l.route_coordinates ?? undefined,
+              stops: [],
             }
           }
-          setDayLocations(map)
+          setDayLocations(base)
+          // In background, fetch stops (with places) for markers and counts
+          try {
+            const results = await Promise.all(days.map(d => listStops(trip.id, d.id, { includePlaces: true })))
+            setDayLocations(prev => {
+              const next = { ...prev }
+              results.forEach((res, idx) => { next[days[idx].id] = { ...(next[days[idx].id] || {}), stops: (res.stops as StopWithPlace[]) } })
+              return next
+            })
+          } catch {}
           return
         }
       } catch {}
@@ -433,7 +512,7 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
                 routeKm={(dayLocations[day.id] as any)?.route_total_km}
                 routeMin={(dayLocations[day.id] as any)?.route_total_min}
                 routeCoordinates={(dayLocations[day.id] as any)?.route_coordinates}
-                stopsCount={0}
+                stopsCount={(dayLocations[day.id]?.stops || []).filter(s => (typeof s.kind === 'string' ? s.kind.toLowerCase() : (s.kind as any)) === 'via').length}
                 onClick={onDayClick}
                 onEdit={setEditingDay}
                 onDelete={setDeletingDay}
@@ -441,7 +520,13 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
                 onEditLocations={handleEditLocations}
                 showCountrySuffix={showCountrySuffix}
                 mapOverlayText={undefined}
-                mapExtraMarkers={[]}
+                mapExtraMarkers={(dayLocations[day.id]?.stops || []).map((s, idx) => ({
+                  id: `${day.id}:${s.id || s.place_id || idx}`,
+                  lat: s.place?.lat ?? (s as any).lat,
+                  lon: s.place?.lon ?? (s as any).lon,
+                  color: s.kind === 'start' ? '#16a34a' : s.kind === 'end' ? '#dc2626' : '#111827',
+                  label: [s.place?.name, s.place?.address].filter(Boolean).join(' — ')
+                }))}
               />
               {/* Compact, inline stops list for the day */}
               <div className="px-2">
@@ -458,7 +543,7 @@ export function DaysList({ trip, onDayClick, className = '', prefilledLocations,
                     try {
                       // Recompute and commit the route after stops change
                       const { throttledComputeDayRoute, commitDayRouteWithFallback, getDayActiveSummary } = await import('@/lib/api/routing')
-                      const preview = await throttledComputeDayRoute(day.id, { optimize: false })
+                      const preview = await throttledComputeDayRoute(day.id, { optimize: true })
                       await commitDayRouteWithFallback(day.id, preview.preview_token, 'Default', { optimize: false })
                       // Refresh lightweight summary and broadcast update
                       const s = await getDayActiveSummary(day.id)
