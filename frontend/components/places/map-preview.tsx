@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as maptilersdk from '@maptiler/sdk';
 import '@maptiler/sdk/dist/maptiler-sdk.css';
 import type { Place } from '@/lib/api/places';
@@ -27,34 +27,60 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
   const lineId = useRef<string>('preview-line');
   const routeLayerIdsRef = useRef<{layer: string, source: string}[]>([]);
   const extraMarkersRef = useRef<Map<string, maptilersdk.Marker>>(new Map());
+  const lastMarkersSigRef = useRef<string>('');
 
   useEffect(() => {
     // Configure API key (Next inlines NEXT_PUBLIC_ envs at build time)
     const apiKey = process.env.NEXT_PUBLIC_MAPTILER_API_KEY as string | undefined;
     if (apiKey) maptilersdk.config.apiKey = apiKey;
 
-    if (!mapContainer.current || mapRef.current) return;
+    const el = mapContainer.current;
+    if (!el || mapRef.current) return;
 
-    // Initialize the map (allow pan/zoom by default)
-    mapRef.current = new maptilersdk.Map({
-      container: mapContainer.current,
-      style: maptilersdk.MapStyle.STREETS,
-      center: [34.7818, 32.0853], // Tel Aviv fallback
-      zoom: 10,
-      interactive,
-    });
-
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
+    const initMap = () => {
+      if (mapRef.current || !mapContainer.current) return;
+      mapRef.current = new maptilersdk.Map({
+        container: mapContainer.current,
+        style: maptilersdk.MapStyle.STREETS,
+        center: [34.7818, 32.0853], // Tel Aviv fallback
+        zoom: 10,
+        interactive,
+      });
     };
+
+    // Wait for container to have layout size to avoid maplibre internal errors
+    if (el.offsetWidth === 0 || el.offsetHeight === 0) {
+      const ro = new ResizeObserver(() => {
+        if (!mapContainer.current) return;
+        if (mapContainer.current.offsetWidth > 0 && mapContainer.current.offsetHeight > 0) {
+          try { ro.disconnect(); } catch {}
+          initMap();
+        }
+      });
+      ro.observe(el);
+      return () => {
+        try { ro.disconnect(); } catch {}
+        if (mapRef.current) {
+          mapRef.current.remove();
+          mapRef.current = null;
+        }
+      };
+    } else {
+      initMap();
+      return () => {
+        if (mapRef.current) {
+          mapRef.current.remove();
+          mapRef.current = null;
+        }
+      };
+    }
   }, []);
 
+  const extraMarkersSig = useMemo(() => JSON.stringify((extraMarkers || []).map(m => ({ id: m.id, lat: +m.lat.toFixed(5), lon: +m.lon.toFixed(5), color: m.color || '' }))), [extraMarkers])
+
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+    const map = mapRef.current as any;
+    if (!map || map._removed) return;
 
     // Helper to add/update a marker
     const setMarker = (
@@ -105,6 +131,8 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
         }
       }
     }
+    // Track signature to force rerender when markers move/change
+    lastMarkersSigRef.current = extraMarkersSig
 
     const baseId = lineId.current;
 
@@ -118,6 +146,7 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
     };
 
     const applyLineAndFit = () => {
+      if (!map || (map as any)._removed) return;
       removeAllRouteLayers();
 
       const allPoints: [number, number][] = [];
@@ -131,8 +160,8 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
           const geojson = { type: 'FeatureCollection', features: [
             { type: 'Feature', geometry: { type: 'LineString', coordinates: r.coordinates }, properties: {} },
           ] } as any;
-          map.addSource(srcId, { type: 'geojson', data: geojson });
-          map.addLayer({
+          if (!map.getSource(srcId)) map.addSource(srcId, { type: 'geojson', data: geojson });
+          if (!map.getLayer(lyrId)) map.addLayer({
             id: lyrId,
             type: 'line',
             source: srcId,
@@ -197,8 +226,8 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
           const geojson = { type: 'FeatureCollection', features: [
             { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} },
           ] } as any;
-          map.addSource(srcId, { type: 'geojson', data: geojson });
-          map.addLayer({ id: lyrId, type: 'line', source: srcId, paint: { 'line-color': '#3b82f6', 'line-width': 3 } });
+          if (!map.getSource(srcId)) map.addSource(srcId, { type: 'geojson', data: geojson });
+          if (!map.getLayer(lyrId)) map.addLayer({ id: lyrId, type: 'line', source: srcId, paint: { 'line-color': '#3b82f6', 'line-width': 3 } });
           routeLayerIdsRef.current.push({ layer: lyrId, source: srcId });
           allPoints.push(...coords);
         }
@@ -206,13 +235,15 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
 
       // Fit bounds
       if (allPoints.length > 0) {
-        if (allPoints.length === 1) {
-          map.easeTo({ center: allPoints[0], zoom: 12, duration: 300 });
-        } else {
-          const bounds = new maptilersdk.LngLatBounds();
-          allPoints.forEach((p) => bounds.extend(p as any));
-          map.fitBounds(bounds, { padding: 40, duration: 300 });
-        }
+        try {
+          if (allPoints.length === 1) {
+            map.easeTo({ center: allPoints[0], zoom: 12, duration: 300 });
+          } else {
+            const bounds = new maptilersdk.LngLatBounds();
+            allPoints.forEach((p) => bounds.extend(p as any));
+            map.fitBounds(bounds, { padding: 40, duration: 300 });
+          }
+        } catch {}
       }
     };
 
@@ -222,10 +253,10 @@ export function MapPreview({ start, end, waypoints = [], routeCoordinates = null
       const onLoad = () => applyLineAndFit();
       map.once('load', onLoad);
       return () => {
-        map.off('load', onLoad);
+        try { map.off('load', onLoad); } catch {}
       };
     }
-  }, [start?.id, start?.lat, start?.lon, end?.id, end?.lat, end?.lon, waypoints?.length, routes?.length, routeCoordinates?.length, interactive, highlightRouteId, extraMarkers?.length]);
+  }, [start?.id, start?.lat, start?.lon, end?.id, end?.lat, end?.lon, waypoints?.length, routes?.length, routeCoordinates?.length, interactive, highlightRouteId, extraMarkersSig]);
 
   return (
     <div className={className} style={{ position: 'relative', height }}>
