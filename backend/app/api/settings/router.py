@@ -25,6 +25,10 @@ def _load_user_settings(db: Session, user_id: str) -> Dict[str, object]:
 @router.get("/user/settings", response_model=SettingsResponse)
 async def get_user_settings(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     settings = _load_user_settings(db, current_user.id)
+    # Expose server-side routing flags for transparency (read-only semantics on the client)
+    from app.core.config import settings as cfg
+    settings["routing_mode"] = cfg.GRAPHHOPPER_MODE
+    settings["use_cloud_matrix"] = cfg.USE_CLOUD_MATRIX
     return SettingsResponse(settings=settings)
 
 
