@@ -115,11 +115,6 @@ async def compute_route(
         def dist(a, b):
             return haversine_km(float(a.place.lat), float(a.place.lon), float(b.place.lat), float(b.place.lon))
 
-        # Anchors are START, any fixed VIA in seq order, and END
-        anchors = (
-            [start_stop] + [s for s in via_stops if s.id in fixed_ids] + [end_stop]
-        )
-
         async def optimize_segment(seg_start, candidates, seg_end):
             # If provider supports matrix, use it for better ordering; else NN fallback
             if hasattr(provider, 'supports_matrix') and provider.supports_matrix() and candidates:
@@ -146,9 +141,7 @@ async def compute_route(
                         raise ValueError(f'Unexpected matrix size {rows}x{cols}, expected {expected}x{expected}')
                 except Exception as e:
                     logger.warning(f"Matrix validation failed: {e}; falling back to greedy NN")
-                    # fallback to greedy NN without matrix
-                    candidates_sorted = sorted(candidates, key=lambda s: dist(seg_start, s))
-                    return candidates_sorted
+                    return sorted(candidates, key=lambda s: dist(seg_start, s))
                 # Build NN over matrix (indexes: 0 is start, 1..n are candidates, n+1 is end)
                 remaining = list(range(1, n+1))
                 order_idx: list[int] = []
@@ -170,36 +163,48 @@ async def compute_route(
                     cur = nxt
                 return ordered
 
-        optimized_order = []
+        # Split VIA stops by fixed flag
+        via_fixed = [s for s in via_stops if s.id in fixed_ids]
+        via_nonfixed = [s for s in via_stops if s.id not in fixed_ids]
 
-        # Partition by anchors based on current order
-        def idx_of(s):
-            return ordered_stops.index(s)
-
-        for ai, aj in zip(anchors, anchors[1:]):
-            i1, i2 = idx_of(ai), idx_of(aj)
-            if i1 > i2:
-                i1, i2 = i2, i1
-            between = [
-                s
-                for s in ordered_stops[i1 + 1 : i2]
-                if s.kind == StopKind.VIA and s.id not in fixed_ids
-            ]
-            if request.optimize and between:
-                optimized_between = await optimize_segment(ai, between, aj)
+        if request.optimize:
+            if not via_fixed:
+                # Optimize all non-fixed VIAs between START and END regardless of DB seq
+                optimized_via = await optimize_segment(start_stop, via_nonfixed, end_stop) if via_nonfixed else []
+                final_stops = [start_stop, *optimized_via, end_stop]
             else:
-                optimized_between = between
-            if not optimized_order:
-                optimized_order.append(ai)
-            optimized_order.extend(optimized_between)
-            optimized_order.append(aj)
-        # Remove duplicates while preserving order
-        seen = set()
-        final_stops = []
-        for s in optimized_order:
-            if s.id not in seen:
-                seen.add(s.id)
-                final_stops.append(s)
+                # Use fixed VIAs as anchors but include all non-fixed VIAs regardless of seq
+                anchors = [start_stop] + sorted(via_fixed, key=lambda s: s.seq) + [end_stop]
+                optimized_order = []
+                remaining = list(via_nonfixed)
+                for ai, aj in zip(anchors, anchors[1:]):
+                    if not optimized_order:
+                        optimized_order.append(ai)
+                    if remaining:
+                        try:
+                            seg_opt = await optimize_segment(ai, remaining, aj)
+                        except Exception:
+                            seg_opt = remaining
+                        optimized_order.extend(seg_opt)
+                        remaining = []
+                    optimized_order.append(aj)
+                # Remove duplicates while preserving order
+                seen = set()
+                final_stops = []
+                for s in optimized_order:
+                    if s.id not in seen:
+                        seen.add(s.id)
+                        final_stops.append(s)
+        else:
+            # Not optimizing: include all VIAs (fixed first by seq, then the rest by seq)
+            via_in_seq = sorted(via_stops, key=lambda s: s.seq)
+            final_order = [start_stop, *[s for s in via_in_seq if s.id not in {start_stop.id, end_stop.id}], end_stop]
+            seen = set()
+            final_stops = []
+            for s in final_order:
+                if s.id not in seen:
+                    seen.add(s.id)
+                    final_stops.append(s)
 
         # Build points from final order
         points = [

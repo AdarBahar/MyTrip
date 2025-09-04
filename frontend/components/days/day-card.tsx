@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { Day } from '@/types';
+import UpdateRouteButton from './UpdateRouteButton';
 import { Place } from '@/lib/api/places';
 import {
   getDayDisplayDate,
@@ -85,7 +86,34 @@ export function DayCard({
   // Auto-save a default route if start+end exist and no saved routes yet
   const hasStartEnd = !!startLocation && !!endLocation
   const autoAttemptedRef = React.useRef(false)
+  const [routingBusy, setRoutingBusy] = React.useState(false)
   const { toast } = useToast()
+
+  // Listen to routing start/finish events to show a tiny indicator
+  React.useEffect(() => {
+    const onComputeStart = (e: any) => { if (e?.detail?.dayId === day.id) setRoutingBusy(true) }
+    const onComputeFinish = (e: any) => { if (e?.detail?.dayId === day.id) setRoutingBusy(false) }
+    const onCommitStart = (e: any) => { if (e?.detail?.dayId === day.id) setRoutingBusy(true) }
+    const onCommitFinish = (e: any) => { if (e?.detail?.dayId === day.id) setRoutingBusy(false) }
+    const onWatchdog = (e: any) => {
+      if (e?.detail?.dayId === day.id) {
+        toast({ title: 'Auto-committing route', description: 'No commit detected. Watchdog is saving the latest computed route.', duration: 2500 })
+      }
+    }
+    window.addEventListener('routing-compute-start', onComputeStart as any)
+    window.addEventListener('routing-compute-finish', onComputeFinish as any)
+    window.addEventListener('routing-commit-start', onCommitStart as any)
+    window.addEventListener('routing-commit-finish', onCommitFinish as any)
+    window.addEventListener('routing-commit-watchdog', onWatchdog as any)
+    return () => {
+      window.removeEventListener('routing-compute-start', onComputeStart as any)
+      window.removeEventListener('routing-compute-finish', onComputeFinish as any)
+      window.removeEventListener('routing-commit-start', onCommitStart as any)
+      window.removeEventListener('routing-commit-finish', onCommitFinish as any)
+      window.removeEventListener('routing-commit-watchdog', onWatchdog as any)
+    }
+  }, [day.id])
+
   React.useEffect(() => {
     (async () => {
       try {
@@ -97,12 +125,12 @@ export function DayCard({
         // Try compute+commit, retry once on failure
         try {
           const { throttledComputeDayRoute, commitDayRouteWithFallback } = await import('@/lib/api/routing')
-          const preview = await throttledComputeDayRoute(day.id, { optimize: false })
+          const preview = await throttledComputeDayRoute(day.id, { optimize: true })
           await commitDayRouteWithFallback(day.id, preview.preview_token, 'Default', { optimize: false })
         } catch (e1) {
           await new Promise(r => setTimeout(r, 2000))
           try {
-            const preview2 = await throttledComputeDayRoute(day.id, { optimize: false })
+            const preview2 = await throttledComputeDayRoute(day.id, { optimize: true })
             await commitDayRouteWithFallback(day.id, preview2.preview_token, 'Default', { optimize: false })
           } catch (e2: any) {
             toast({ title: 'Could not auto-create route', description: 'Click Manage routes to generate it manually.', variant: 'destructive' })
@@ -296,14 +324,20 @@ export function DayCard({
                   interactive={false}
                 />
                 {(startLocation && endLocation) && (hasRouteSummary ? (
-                  <div className="text-xs text-gray-600 mt-1">
-                    {Math.round(routeKm!)} km • {Math.floor(routeMin! / 60)}h {Math.round(routeMin! % 60)}m
+                  <div className="flex items-center justify-between mt-1">
+                    <div className="text-xs text-gray-600">
+                      {Math.round(routeKm!)} km • {Math.floor(routeMin! / 60)}h {Math.round(routeMin! % 60)}m
+                      {routingBusy && <span className="ml-2 text-[10px] text-blue-600">Updating route…</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <UpdateRouteButton dayId={day.id} />
+                    </div>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between mt-1">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-[10px] text-gray-500" title="Routing unavailable or still computing">
-                        {startLocation && endLocation ? 'Computing route…' : 'Routing unavailable'}
+                        {startLocation && endLocation ? (routingBusy ? 'Updating route…' : 'Computing route…') : 'Routing unavailable'}
                       </Badge>
                       {quickRoutes.length > 0 && (
                         <div className="flex items-center gap-1">
@@ -317,7 +351,10 @@ export function DayCard({
                       )}
                       <button className="text-[11px] text-blue-600 hover:underline" onClick={(e) => { e.stopPropagation(); setShowRoutes(true); }}>Manage routes</button>
                     </div>
-                    <RecomputeRouteButton dayId={day.id} />
+                    <div className="flex items-center gap-3">
+                      <RecomputeRouteButton dayId={day.id} />
+                      <UpdateRouteButton dayId={day.id} />
+                    </div>
                   </div>
                 ))}
                 <div className="space-y-1">

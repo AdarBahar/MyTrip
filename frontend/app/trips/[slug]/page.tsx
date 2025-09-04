@@ -78,7 +78,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
   }, [visibleDays, isFullMap, summaryDays.length])
 
   // Prefilled locations for DaysList summary
-  const [dayLocations, setDayLocations] = useState<Record<string, { start?: any; end?: any; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][] }>>({})
+  const [dayLocations, setDayLocations] = useState<Record<string, { start?: any; end?: any; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][]; stops?: any[] }>>({})
 
 
   // Load user default for country suffix
@@ -314,44 +314,6 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
   if (error || !trip) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-            {/* Legend with toggles and permalink */}
-            <div className="mt-2 text-xs text-gray-600 flex items-center gap-4 flex-wrap px-4">
-              {[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => (
-                <label key={d.id} className="flex items-center gap-2 cursor-pointer"
-                  onMouseEnter={() => setHoverDayId(d.id)}
-                  onMouseLeave={() => setHoverDayId(null)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={visibleDays[d.id] ?? true}
-                    onChange={(e) => setVisibleDays(v => ({ ...v, [d.id]: e.target.checked }))}
-                  />
-                  <span className="inline-block w-3 h-0.5" style={{ backgroundColor: dayColors[idx % dayColors.length] }} />
-                  <span>Day {d.seq}</span>
-                </label>
-              ))}
-              <Button
-                variant="outline"
-                size="xs"
-                className="ml-auto"
-                onClick={() => {
-                  try {
-                    const qs = new URLSearchParams(searchParams?.toString() || '')
-                    qs.set('view','map')
-                    const visible = [...summaryDays]
-                      .sort((a,b)=>a.seq-b.seq)
-                      .filter(d => (visibleDays[d.id] ?? true))
-                      .map(d => d.id)
-                    if (visible.length) qs.set('visible', visible.join(','))
-                    else qs.delete('visible')
-                    const url = `${window.location.origin}/trips/${trip?.slug || params.slug}?${qs.toString()}`
-                    navigator.clipboard.writeText(url)
-                  } catch {}
-                }}
-                title="Copy permalink"
-              >Copy link</Button>
-            </div>
-
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Trip Not Found</h1>
           <p className="text-gray-600 mb-6">{error || 'The requested trip could not be found.'}</p>
@@ -488,29 +450,21 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                 {typeof totalRouteKm === 'number' && typeof totalRouteMin === 'number' && (
                   <div className="text-sm text-gray-700">
                     {Math.round(totalRouteKm)} km • {Math.floor(totalRouteMin / 60)}h {Math.round(totalRouteMin % 60)}m
-                <div className="flex items-center gap-3">
-                  {typeof totalRouteKm === 'number' && typeof totalRouteMin === 'number' && (
-                    <div className="text-sm text-gray-700">
-                      {Math.round(totalRouteKm)} km • {Math.floor(totalRouteMin / 60)}h {Math.round(totalRouteMin % 60)}m
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <select className="text-xs border rounded px-1 py-0.5" value={routesDayId || ''} onChange={(e) => setRoutesDayId(e.target.value || null)}>
-                      <option value="">Select day…</option>
-                      {[...summaryDays].sort((a,b)=>a.seq-b.seq).map(d => (
-                        <option key={d.id} value={d.id}>Day {d.seq}</option>
-                      ))}
-                    </select>
-                    <Button variant="outline" size="sm" onClick={() => {
-                      const id = routesDayId || hoverDayId || (summaryDays[0]?.id || null)
-                      if (!id) { toast({ title: 'No day selected', description: 'Choose a day to manage routes.' }); return }
-                      setRoutesDayId(id); setShowRoutes(true)
-                    }}>Manage routes</Button>
-                  </div>
-                </div>
-
                   </div>
                 )}
+                <div className="flex items-center gap-2">
+                  <select className="text-xs border rounded px-1 py-0.5" value={routesDayId || ''} onChange={(e) => setRoutesDayId(e.target.value || null)}>
+                    <option value="">Select day…</option>
+                    {[...summaryDays].sort((a,b)=>a.seq-b.seq).map(d => (
+                      <option key={d.id} value={d.id}>Day {d.seq}</option>
+                    ))}
+                  </select>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    const id = routesDayId || hoverDayId || (summaryDays[0]?.id || null)
+                    if (!id) { toast({ title: 'No day selected', description: 'Choose a day to manage routes.' }); return }
+                    setRoutesDayId(id); setShowRoutes(true)
+                  }}>Manage routes</Button>
+                </div>
               </div>
             </div>
           </CardHeader>

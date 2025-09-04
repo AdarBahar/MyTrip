@@ -22,7 +22,7 @@ interface InlineStopsPreviewProps {
   className?: string
   maxVisible?: number // how many to show inline before "+N more"
   maxStops?: number // limit before hiding the add button
-  onChange?: () => Promise<void> | void // called after stop add
+  onChange?: (stops: StopWithPlace[]) => Promise<void> | void // called after stop add with latest stops
   onVisualsChange?: (query: string, markers: { id: string; lat: number; lon: number }[]) => void
   dayCenter?: { lat: number; lon: number } | null
 }
@@ -95,7 +95,7 @@ export default function InlineStopsPreview({
   const handleStopAdded = async () => {
     setShowAdd(false)
     await load()
-    if (onChange) await onChange()
+    if (onChange) await onChange(stops)
   }
 
   if (loading) {
