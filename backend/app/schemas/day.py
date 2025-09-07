@@ -1,12 +1,14 @@
 """
-Day schemas
+Day schemas with ISO-8601 date/datetime standardization
 """
 from datetime import datetime, date as Date
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict, computed_field
+from pydantic import BaseModel, Field, ConfigDict, computed_field, field_serializer, field_validator
 
 from app.models.day import DayStatus
 from app.schemas.place import PlaceSchema
+from app.schemas.base import BaseResponseWithSoftDelete, ISO8601Date, ISO8601DateTime
+from app.core.datetime_utils import date_serializer, datetime_serializer, date_validator, datetime_validator
 
 
 class DayBase(BaseModel):
@@ -33,28 +35,71 @@ class DayUpdate(BaseModel):
     notes: Optional[Dict[str, Any]] = Field(None, description="Additional notes and metadata")
 
 
-class Day(DayBase):
-    """Day schema"""
-    model_config = ConfigDict(from_attributes=True)
+class Day(DayBase, BaseResponseWithSoftDelete):
+    """Day schema with standardized ISO-8601 datetime fields"""
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "01K4AHPK4S1KVTYDB5ASTGTM8K",
+                    "trip_id": "01K367ED2RPNS2H19J8PQDNXFB",
+                    "seq": 1,
+                    "status": "active",
+                    "rest_day": False,
+                    "notes": {"weather": "sunny", "activities": ["hiking"]},
+                    "trip_start_date": "2024-07-15",
+                    "calculated_date": "2024-07-15",
+                    "created_at": "2024-01-15T10:30:00Z",
+                    "updated_at": "2024-01-15T10:30:00Z",
+                    "deleted_at": None
+                }
+            ],
+            "timezone_info": {
+                "description": "All datetime fields (created_at, updated_at, deleted_at) are in UTC timezone",
+                "format": "ISO-8601 (YYYY-MM-DDTHH:MM:SSZ)",
+                "timezone": "UTC"
+            }
+        }
+    )
 
-    id: str
-    trip_id: str
-    created_at: datetime
-    updated_at: datetime
-    deleted_at: Optional[datetime] = None
+    trip_id: str = Field(
+        description="ID of the trip this day belongs to",
+        examples=["01K367ED2RPNS2H19J8PQDNXFB"]
+    )
 
     # Optional trip information for date calculation
-    trip_start_date: Optional[Date] = Field(None, description="Trip start date (for calculated_date)")
+    trip_start_date: ISO8601Date = Field(
+        None,
+        description="Trip start date for calculated_date computation (ISO-8601: YYYY-MM-DD)",
+        examples=["2024-07-15"]
+    )
+
+    @field_serializer('trip_start_date')
+    def serialize_trip_start_date(self, d: Optional[Date]) -> Optional[str]:
+        """Serialize trip_start_date to ISO-8601 format"""
+        return date_serializer(d)
+
+    @field_validator('trip_start_date', mode='before')
+    @classmethod
+    def validate_trip_start_date(cls, v) -> Optional[Date]:
+        """Validate and parse trip_start_date field"""
+        return date_validator(v)
 
     @computed_field
     @property
-    def calculated_date(self) -> Optional[Date]:
-        """Calculate the date for this day based on trip start date and sequence"""
+    def calculated_date(self) -> Optional[str]:
+        """
+        Calculate the date for this day based on trip start date and sequence
+
+        Returns ISO-8601 formatted date string for consistency with API standards
+        """
         if not self.trip_start_date:
             return None
 
         from datetime import timedelta
-        return self.trip_start_date + timedelta(days=self.seq - 1)
+        calculated = self.trip_start_date + timedelta(days=self.seq - 1)
+        return date_serializer(calculated)
 
 
 class DayList(BaseModel):

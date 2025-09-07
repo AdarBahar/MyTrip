@@ -56,8 +56,15 @@ class PlaceSearchItem(BaseModel):
 
 
 class PlaceSearchResult(BaseModel):
+    """Legacy place search result schema"""
     places: List[PlaceSearchItem]
     total: int
+
+# Import enhanced pagination
+from app.schemas.pagination import PaginatedResponse
+
+# Modern paginated place search response
+PlaceSearchPaginatedResponse = PaginatedResponse[PlaceSearchItem]
 
 
 class GeocodingResult(BaseModel):

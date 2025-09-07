@@ -11,6 +11,9 @@ import { fetchWithAuth } from '@/lib/auth'
 import { getApiBase } from '@/lib/api/base'
 import { MinimalDebugToggle } from '@/components/minimal-debug'
 import { TripDateBadge } from '@/components/trips/trip-date-actions'
+import { listTripsEnhanced, deleteTrip } from '@/lib/api/trips'
+import { ErrorDisplay, SuccessDisplay, useAPIResponseHandler } from '@/components/ui/error-display'
+import { EnhancedTripDelete } from '@/components/trips/enhanced-trip-form'
 
 interface TripCreator {
   id: string
@@ -38,9 +41,9 @@ interface Trip {
 export default function TripsPage() {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
   const router = useRouter()
+  const { error, success, handleResponse, clearMessages } = useAPIResponseHandler()
 
   useEffect(() => {
     // Check authentication
@@ -62,22 +65,26 @@ export default function TripsPage() {
   }, [])
 
   const fetchTrips = async () => {
+    setLoading(true)
+    clearMessages()
+
     try {
-      const apiBaseUrl = await getApiBase()
-      const response = await fetchWithAuth(`${apiBaseUrl}/trips/`)
+      const response = await listTripsEnhanced()
+      const result = handleResponse(response)
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch trips: ${response.status}`)
+      if (result) {
+        setTrips(result.data || [])
       }
-
-      const data = await response.json()
-      setTrips(data.trips || [])
     } catch (err) {
       console.error('Error fetching trips:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load trips')
+      // Error is handled by useAPIResponseHandler
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleTripDeleted = () => {
+    fetchTrips() // Reload trips after deletion
   }
 
   const handleLogout = () => {
@@ -126,20 +133,24 @@ export default function TripsPage() {
           </div>
         </div>
 
-        {/* Error State */}
+        {/* Success Message */}
+        {success && (
+          <SuccessDisplay
+            message={success.message}
+            type={success.type}
+            className="mb-8"
+            onDismiss={clearMessages}
+          />
+        )}
+
+        {/* Enhanced Error Display */}
         {error && (
-          <Card className="mb-8 border-red-200 bg-red-50">
-            <CardContent className="pt-6">
-              <p className="text-red-600">Error: {error}</p>
-              <Button 
-                variant="outline" 
-                onClick={fetchTrips}
-                className="mt-4"
-              >
-                Try Again
-              </Button>
-            </CardContent>
-          </Card>
+          <ErrorDisplay
+            error={error}
+            className="mb-8"
+            showSuggestions={true}
+            onRetry={fetchTrips}
+          />
         )}
 
         {/* Empty State */}
@@ -207,6 +218,15 @@ export default function TripsPage() {
                     <Button variant="outline" size="sm">
                       Share
                     </Button>
+                  </div>
+
+                  {/* Enhanced Delete Button */}
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <EnhancedTripDelete
+                      trip={trip}
+                      onTripDeleted={handleTripDeleted}
+                      className="text-right"
+                    />
                   </div>
                 </CardContent>
               </Card>

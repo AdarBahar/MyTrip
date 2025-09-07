@@ -4,7 +4,7 @@ Stops API router
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, or_
 import logging
 
 from app.core.database import get_db
@@ -20,6 +20,15 @@ from app.schemas.stop import (
     StopsSummary
 )
 from app.schemas.route import RouteComputeRequest, RouteCommitRequest
+from app.schemas.bulk import (
+    BulkDeleteRequest, BulkUpdateRequest, BulkReorderRequest, BulkOperationResult
+)
+from app.schemas.sequence import (
+    SequenceOperationRequest, SequenceOperationResult, StopFilterSort
+)
+from app.services.bulk_operations import BulkOperationService
+from app.services.sequence_manager import SequenceManager
+from app.services.filtering import FilteringService, FilterCondition, SortCondition
 from app.api.routing.router import compute_route as routing_compute_route, commit_route as routing_commit_route
 
 router = APIRouter()
@@ -261,14 +270,39 @@ async def list_stops(
     day_id: str,
     include_place: bool = Query(False, description="Include place information"),
     stop_type: Optional[str] = Query(None, description="Filter by stop type (case-insensitive)"),
+    # Enhanced filtering and sorting
+    filter_string: Optional[str] = Query(None, description="Advanced filters: field:operator:value,field2:op2:val2"),
+    sort_string: Optional[str] = Query(None, description="Sort: field:direction,field2:direction2"),
+    duration_min: Optional[int] = Query(None, description="Filter by minimum duration"),
+    duration_max: Optional[int] = Query(None, description="Filter by maximum duration"),
+    search: Optional[str] = Query(None, description="Search in stop notes and place names"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    **List Stops for Day**
-    
-    Get all stops for a specific day, ordered by sequence number.
-    
+    **Enhanced List Stops for Day**
+
+    Get all stops for a specific day with advanced filtering and sorting capabilities.
+
+    **Enhanced Features:**
+    - ✅ **Multi-attribute filtering**: Filter by type, duration, notes, etc.
+    - ✅ **Flexible sorting**: Sort by sequence, duration, creation date, etc.
+    - ✅ **Search functionality**: Search across notes and place names
+    - ✅ **Range filters**: Duration min/max filters
+    - ✅ **String-based filters**: Advanced filter syntax
+
+    **Filter Examples:**
+    - `filter_string=stop_type:eq:food,duration_min:gte:30`
+    - `sort_string=seq:asc,duration_min:desc`
+    - `search=restaurant` (searches notes and place names)
+    - `duration_min=30&duration_max=120` (duration range)
+
+    **Supported Filter Fields:**
+    - `stop_type`, `seq`, `duration_min`, `notes`, `created_at`, `updated_at`
+
+    **Supported Sort Fields:**
+    - `seq`, `stop_type`, `duration_min`, `created_at`, `updated_at`
+
     **Authentication Required:** You must be the trip owner.
     """
     # Verify access and load day
@@ -277,7 +311,7 @@ async def list_stops(
     # Ensure inherited START exists for current day (auto-fill from previous day END)
     ensure_inherited_start_for_current_day(trip_id, day, db)
 
-    # Build query
+    # Build base query
     query = db.query(Stop)
 
     if include_place:
@@ -289,9 +323,11 @@ async def list_stops(
         Stop.trip_id == trip_id
     )
 
-    # Optional stop_type filter (case-insensitive string)
+    # Initialize filtering service
+    filtering_service = FilteringService()
+
+    # Legacy stop_type filter (for backward compatibility)
     if stop_type:
-        # Try to coerce string into enum by name or value
         try:
             enum_val = StopType[stop_type.upper()]
         except KeyError:
@@ -303,15 +339,48 @@ async def list_stops(
         if enum_val is None:
             raise HTTPException(status_code=422, detail="Invalid stop_type")
         query = query.filter(Stop.stop_type == enum_val)
-    # Also support case-insensitive string filter for stop_type
-    else:
-        try:
-            # Accept stop_type as string (e.g., 'food') from query
-            from fastapi import Request  # type: ignore
-        except Exception:
-            Request = None  # noqa
 
-    stops = query.order_by(Stop.seq).all()
+    # Enhanced filtering
+    filter_conditions = []
+
+    # Parse filter string
+    if filter_string:
+        filter_conditions.extend(filtering_service.parse_filter_string(filter_string))
+
+    # Duration range filters
+    if duration_min is not None:
+        filter_conditions.append(FilterCondition('duration_min', 'gte', duration_min))
+    if duration_max is not None:
+        filter_conditions.append(FilterCondition('duration_min', 'lte', duration_max))
+
+    # Search functionality
+    if search:
+        # Search in notes and place names (if place is joined)
+        search_filter = Stop.notes.ilike(f"%{search}%")
+        if include_place:
+            from app.models.place import Place
+            search_filter = or_(
+                Stop.notes.ilike(f"%{search}%"),
+                Place.name.ilike(f"%{search}%")
+            )
+            query = query.join(Place, Stop.place_id == Place.id, isouter=True)
+        query = query.filter(search_filter)
+
+    # Apply advanced filters
+    allowed_filter_fields = ['stop_type', 'seq', 'duration_min', 'notes', 'created_at', 'updated_at']
+    query = filtering_service.apply_filters(query, Stop, filter_conditions, allowed_filter_fields)
+
+    # Enhanced sorting
+    sort_conditions = []
+    if sort_string:
+        sort_conditions = filtering_service.parse_sort_string(sort_string)
+
+    # Apply sorting with default fallback
+    allowed_sort_fields = ['seq', 'stop_type', 'duration_min', 'created_at', 'updated_at']
+    default_sort = SortCondition('seq', 'asc')
+    query = filtering_service.apply_sorting(query, Stop, sort_conditions, allowed_sort_fields, default_sort)
+
+    stops = query.all()
 
 
     
@@ -367,7 +436,7 @@ async def list_stops(
     return {'stops': stops_data}
 
 
-@router.post("/{trip_id}/days/{day_id}/stops", response_model=StopSchema)
+@router.post("/{trip_id}/days/{day_id}/stops", response_model=StopSchema, status_code=201)
 async def create_stop(
     trip_id: str,
     day_id: str,
@@ -538,7 +607,7 @@ async def update_stop(
     return StopSchema.model_validate(stop)
 
 
-@router.delete("/{trip_id}/days/{day_id}/stops/{stop_id}")
+@router.delete("/{trip_id}/days/{day_id}/stops/{stop_id}", status_code=204)
 async def delete_stop(
     trip_id: str,
     day_id: str,
@@ -581,7 +650,8 @@ async def delete_stop(
     except Exception as e:
         logger.warning(f"[stops] compute+commit failed: action=delete day_id={day_id} err={e}")
 
-    return {"message": "Stop deleted successfully"}
+    # Return 204 No Content (no response body)
+    return
 
 
 @router.post("/{trip_id}/days/{day_id}/stops/reorder")
@@ -694,3 +764,348 @@ async def get_trip_stops_summary(
         "total_stops": total_stops,
         "by_type": summary_dict
     }
+
+
+# Bulk Operations Endpoints
+
+@router.delete("/bulk", response_model=BulkOperationResult, status_code=200)
+async def bulk_delete_stops(
+    request: BulkDeleteRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    **Bulk Delete Stops**
+
+    Delete multiple stops in a single operation for improved efficiency.
+
+    **Features:**
+    - Delete up to 100 stops at once
+    - Automatic route recomputation after deletion
+    - Transactional safety (all or nothing)
+    - Permission validation for each stop
+    - Detailed results for each operation
+
+    **Request Body:**
+    ```json
+    {
+      "ids": ["stop_id_1", "stop_id_2", "stop_id_3"],
+      "force": false
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+      "total_items": 3,
+      "successful": 2,
+      "failed": 1,
+      "skipped": 0,
+      "items": [
+        {
+          "id": "stop_id_1",
+          "status": "success",
+          "operation": "delete"
+        },
+        {
+          "id": "stop_id_2",
+          "status": "failed",
+          "error": "Permission denied",
+          "operation": "delete"
+        }
+      ]
+    }
+    ```
+
+    **Use Cases:**
+    - Clear all stops from a day
+    - Remove multiple unwanted stops
+    - Cleanup operations
+    """
+    bulk_service = BulkOperationService(db)
+
+    async def pre_delete_hook(stop: Stop):
+        """Hook to handle stop-specific logic before deletion"""
+        # Log the deletion for audit purposes
+        logger.info(f"Deleting stop {stop.id} from day {stop.day_id}")
+
+    async def post_delete_hook(stop: Stop):
+        """Hook to handle post-deletion logic"""
+        # Trigger route recomputation for the affected day
+        try:
+            compute_req = RouteComputeRequest(profile='car', optimize=True)
+            await routing_compute_route(stop.day_id, compute_req, db)
+        except Exception as e:
+            logger.warning(f"Failed to recompute route after stop deletion: {e}")
+
+    return await bulk_service.bulk_delete(
+        model_class=Stop,
+        ids=request.ids,
+        user_id=current_user.id,
+        force=request.force,
+        pre_delete_hook=pre_delete_hook,
+        post_delete_hook=post_delete_hook
+    )
+
+
+@router.patch("/bulk", response_model=BulkOperationResult, status_code=200)
+async def bulk_update_stops(
+    request: BulkUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    **Bulk Update Stops**
+
+    Update multiple stops in a single operation for improved efficiency.
+
+    **Features:**
+    - Update up to 100 stops at once
+    - Field-level validation and filtering
+    - Automatic route recomputation if positions change
+    - Transactional safety
+    - Permission validation for each stop
+
+    **Allowed Update Fields:**
+    - `duration_min`: Duration at the stop
+    - `notes`: Stop notes/description
+    - `seq`: Sequence number (triggers route recomputation)
+    - `stop_type`: Stop type (accommodation, food, etc.)
+
+    **Request Body:**
+    ```json
+    {
+      "updates": [
+        {
+          "id": "stop_id_1",
+          "data": {
+            "duration_min": 60,
+            "notes": "Updated notes"
+          }
+        },
+        {
+          "id": "stop_id_2",
+          "data": {
+            "seq": 3,
+            "stop_type": "food"
+          }
+        }
+      ]
+    }
+    ```
+
+    **Use Cases:**
+    - Batch update stop durations
+    - Change multiple stop types
+    - Update notes for multiple stops
+    - Reorder multiple stops
+    """
+    bulk_service = BulkOperationService(db)
+
+    # Define allowed fields for bulk updates
+    allowed_fields = ['duration_min', 'notes', 'seq', 'stop_type']
+
+    async def pre_update_hook(stop: Stop, update_data: dict):
+        """Hook to handle stop-specific logic before update"""
+        # Validate stop type if being updated
+        if 'stop_type' in update_data:
+            try:
+                StopType(update_data['stop_type'])
+            except ValueError:
+                raise ValueError(f"Invalid stop_type: {update_data['stop_type']}")
+
+        return update_data
+
+    async def post_update_hook(stop: Stop, update_data: dict):
+        """Hook to handle post-update logic"""
+        # Trigger route recomputation if sequence changed
+        if 'seq' in update_data:
+            try:
+                compute_req = RouteComputeRequest(profile='car', optimize=True)
+                await routing_compute_route(stop.day_id, compute_req, db)
+            except Exception as e:
+                logger.warning(f"Failed to recompute route after stop update: {e}")
+
+    return await bulk_service.bulk_update(
+        model_class=Stop,
+        updates=request.updates,
+        user_id=current_user.id,
+        allowed_fields=allowed_fields,
+        pre_update_hook=pre_update_hook,
+        post_update_hook=post_update_hook
+    )
+
+
+@router.post("/bulk/reorder", response_model=BulkOperationResult, status_code=200)
+async def bulk_reorder_stops(
+    day_id: str,
+    request: BulkReorderRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    **Bulk Reorder Stops**
+
+    Reorder multiple stops within a day in a single operation.
+
+    **Features:**
+    - Reorder up to 50 stops at once
+    - Automatic route recomputation
+    - Validates sequence numbers
+    - Ensures no duplicate positions
+    - Scoped to specific day
+
+    **Request Body:**
+    ```json
+    {
+      "items": [
+        {"id": "stop_id_1", "seq": 1},
+        {"id": "stop_id_2", "seq": 2},
+        {"id": "stop_id_3", "seq": 3}
+      ]
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+      "total_items": 3,
+      "successful": 3,
+      "failed": 0,
+      "items": [
+        {
+          "id": "stop_id_1",
+          "status": "success",
+          "operation": "reorder",
+          "data": {"new_sequence": 1}
+        }
+      ]
+    }
+    ```
+
+    **Use Cases:**
+    - Drag-and-drop reordering in UI
+    - Optimize stop order
+    - Reorganize itinerary
+    """
+    # Validate day exists and user has access
+    day = db.query(Day).join(Trip).filter(
+        Day.id == day_id,
+        Trip.created_by == current_user.id
+    ).first()
+
+    if not day:
+        raise HTTPException(status_code=404, detail="Day not found or access denied")
+
+    bulk_service = BulkOperationService(db)
+
+    # Perform bulk reorder scoped to the specific day
+    result = await bulk_service.bulk_reorder(
+        model_class=Stop,
+        reorder_items=request.items,
+        user_id=current_user.id,
+        sequence_field='seq',
+        scope_field='day_id',
+        scope_value=day_id
+    )
+
+    # Trigger route recomputation if any reordering was successful
+    if result.successful > 0:
+        try:
+            compute_req = RouteComputeRequest(profile='car', optimize=True)
+            await routing_compute_route(day_id, compute_req, db)
+            logger.info(f"Route recomputed after bulk reorder for day {day_id}")
+        except Exception as e:
+            logger.warning(f"Failed to recompute route after bulk reorder: {e}")
+            # Add warning to result but don't fail the operation
+            result.errors.append(f"Reorder successful but route recomputation failed: {str(e)}")
+
+    return result
+
+
+# Sequence Management Endpoints
+
+@router.post("/{stop_id}/sequence", response_model=SequenceOperationResult)
+async def reorder_stop_sequence(
+    stop_id: str,
+    request: SequenceOperationRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    **Smart Sequence Management for Stops**
+
+    Perform intelligent sequence operations to avoid manual sequence number conflicts.
+
+    **Supported Operations:**
+    - `move_up`: Move stop up one position
+    - `move_down`: Move stop down one position
+    - `move_to_top`: Move stop to first position
+    - `move_to_bottom`: Move stop to last position
+    - `insert_after`: Insert stop after another stop
+    - `insert_before`: Insert stop before another stop
+    - `move_to_position`: Move stop to specific position
+
+    **Benefits:**
+    - ✅ **Conflict-free**: Automatically handles sequence number conflicts
+    - ✅ **Collaborative-safe**: Works correctly with multiple users
+    - ✅ **Atomic operations**: All changes in single transaction
+    - ✅ **Auto-route update**: Triggers route recomputation
+
+    **Examples:**
+
+    Move up one position:
+    ```json
+    {"operation": "move_up"}
+    ```
+
+    Insert after another stop:
+    ```json
+    {
+      "operation": "insert_after",
+      "target_id": "other_stop_id"
+    }
+    ```
+
+    Move to specific position:
+    ```json
+    {
+      "operation": "move_to_position",
+      "target_position": 3
+    }
+    ```
+    """
+    # Get the stop and verify ownership
+    stop = db.query(Stop).join(Day).join(Trip).filter(
+        Stop.id == stop_id,
+        Trip.created_by == current_user.id
+    ).first()
+
+    if not stop:
+        raise HTTPException(status_code=404, detail="Stop not found or access denied")
+
+    # Initialize sequence manager
+    seq_manager = SequenceManager(db)
+
+    # Perform the sequence operation scoped to the day
+    result = seq_manager.reorder_sequence(
+        model_class=Stop,
+        item_id=stop_id,
+        operation=request.operation,
+        target_id=request.target_id,
+        target_position=request.target_position,
+        scope_filters={'day_id': stop.day_id},
+        sequence_field='seq'
+    )
+
+    # Trigger route recomputation if operation was successful
+    if result.get('success'):
+        try:
+            compute_req = RouteComputeRequest(profile='car', optimize=True)
+            await routing_compute_route(stop.day_id, compute_req, db)
+            logger.info(f"Route recomputed after sequence operation for day {stop.day_id}")
+        except Exception as e:
+            logger.warning(f"Failed to recompute route after sequence operation: {e}")
+            # Don't fail the sequence operation, just log the warning
+
+    return SequenceOperationResult(**result)

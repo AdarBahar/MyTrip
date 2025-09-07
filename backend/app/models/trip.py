@@ -12,23 +12,40 @@ from app.models.base import BaseModel, SoftDeleteMixin
 
 
 class TripStatus(str, enum.Enum):
-    """Trip status enumeration"""
-    DRAFT = "draft"        # Trip is being planned
-    ACTIVE = "active"      # Trip is currently happening or confirmed
-    COMPLETED = "completed"  # Trip has been completed
-    ARCHIVED = "archived"  # Trip has been archived
+    """
+    Trip planning and execution status
+
+    Represents the current state of a trip throughout its lifecycle,
+    from initial planning to completion and archival.
+    """
+    DRAFT = "draft"        # 📝 Trip is being planned - editable, not confirmed
+    ACTIVE = "active"      # ✈️ Trip is currently happening or confirmed for travel
+    COMPLETED = "completed"  # ✅ Trip has been completed successfully
+    ARCHIVED = "archived"  # 📦 Trip has been archived for reference only
 
 
 class TripMemberRole(str, enum.Enum):
-    OWNER = "owner"
-    EDITOR = "editor"
-    VIEWER = "viewer"
+    """
+    Trip collaboration roles and permissions
+
+    Defines the level of access and permissions for trip members
+    in collaborative trip planning scenarios.
+    """
+    OWNER = "owner"      # 👑 Full control - can edit, delete, and manage members
+    EDITOR = "editor"    # ✏️ Can edit trip content but not manage members
+    VIEWER = "viewer"    # 👀 Read-only access to trip information
 
 
 class TripMemberStatus(str, enum.Enum):
-    ACTIVE = "active"
-    PENDING = "pending"
-    REMOVED = "removed"
+    """
+    Trip member invitation and participation status
+
+    Tracks the current state of a user's membership in a trip,
+    from invitation through active participation.
+    """
+    ACTIVE = "active"      # ✅ Member is actively participating in trip planning
+    PENDING = "pending"    # ⏳ Invitation sent but not yet accepted
+    REMOVED = "removed"    # ❌ Member has been removed or left the trip
 
 
 class Trip(BaseModel, SoftDeleteMixin):
