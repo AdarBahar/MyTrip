@@ -2,9 +2,12 @@
 
 import { useState } from 'react'
 import { RefreshCcw } from 'lucide-react'
+import { useToast } from '@/components/ui/use-toast'
+import { RoutingError } from '@/lib/api/routing'
 
 export default function UpdateRouteButton({ dayId, onUpdated }: { dayId: string, onUpdated?: (loc: any) => void }) {
   const [busy, setBusy] = useState(false)
+  const { toast } = useToast()
 
   const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -25,8 +28,30 @@ export default function UpdateRouteButton({ dayId, onUpdated }: { dayId: string,
       // Broadcast first so global listeners update even if a local callback fails
       try { window.dispatchEvent(new CustomEvent('day-summary-updated', { detail: { dayId, loc } })) } catch {}
       try { onUpdated && onUpdated(loc) } catch {}
-    } catch (e) {
-      // swallow; UI shows disabled state during run
+    } catch (e: any) {
+      // Log error and show enhanced user feedback
+      console.error('Route update failed:', e);
+
+      if (e instanceof RoutingError) {
+        const userMessage = e.getUserMessage();
+        const description = userMessage.steps
+          ? `${userMessage.description}\n\nNext steps:\n${userMessage.steps.map(step => `• ${step}`).join('\n')}`
+          : userMessage.description;
+
+        toast({
+          title: userMessage.title,
+          description: description,
+          variant: 'destructive',
+          duration: 8000  // Longer duration for actionable messages
+        });
+      } else {
+        // Fallback for non-routing errors
+        toast({
+          title: 'Route update failed',
+          description: e?.message || 'Please try again later.',
+          variant: 'destructive'
+        });
+      }
     } finally {
       setBusy(false)
     }

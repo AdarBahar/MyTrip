@@ -12,26 +12,36 @@ from app.models.base import BaseModel
 
 
 class StopKind(str, enum.Enum):
-    """Route planning stop types (match DB enum values)"""
-    START = "START"
-    VIA = "VIA"
-    END = "END"
+    """
+    Route planning stop types for navigation
+
+    Defines the role of a stop in route calculation and optimization.
+    Used by routing algorithms to determine stop order and constraints.
+    """
+    START = "START"    # 🚀 Starting point of the route (fixed position)
+    VIA = "VIA"        # 📍 Intermediate waypoint (can be optimized)
+    END = "END"        # 🏁 Final destination (fixed position)
 
 
 class StopType(str, enum.Enum):
-    """User-friendly stop categories (match DB enum values)"""
-    ACCOMMODATION = "ACCOMMODATION"  # Hotels, B&Bs, camping
-    FOOD = "FOOD"                   # Restaurants, cafes, bars
-    ATTRACTION = "ATTRACTION"       # Museums, parks, landmarks
-    ACTIVITY = "ACTIVITY"          # Tours, sports, entertainment
-    SHOPPING = "SHOPPING"          # Stores, markets, malls
-    GAS = "GAS"                    # Gas stations, charging
-    TRANSPORT = "TRANSPORT"        # Airports, train stations
-    SERVICES = "SERVICES"          # Banks, hospitals, repair
-    NATURE = "NATURE"              # Parks, beaches, trails
-    CULTURE = "CULTURE"            # Museums, theaters, galleries
-    NIGHTLIFE = "NIGHTLIFE"        # Bars, clubs, entertainment
-    OTHER = "OTHER"                # Miscellaneous stops
+    """
+    User-friendly stop categories for trip organization
+
+    Categorizes stops by their purpose and type to help with
+    trip planning, filtering, and organization.
+    """
+    ACCOMMODATION = "ACCOMMODATION"  # 🏨 Hotels, hostels, vacation rentals, camping
+    FOOD = "FOOD"                   # 🍽️ Restaurants, cafes, food markets, bars
+    ATTRACTION = "ATTRACTION"       # 🎭 Museums, landmarks, tourist sites, monuments
+    ACTIVITY = "ACTIVITY"          # 🎯 Tours, experiences, entertainment, sports
+    SHOPPING = "SHOPPING"          # 🛍️ Stores, markets, shopping centers, outlets
+    GAS = "GAS"                    # ⛽ Gas stations, EV charging stations, fuel stops
+    TRANSPORT = "TRANSPORT"        # 🚌 Airports, train stations, bus stops, ports
+    SERVICES = "SERVICES"          # 🏦 Banks, post offices, government offices, repair
+    NATURE = "NATURE"              # 🌲 Parks, beaches, hiking trails, scenic viewpoints
+    CULTURE = "CULTURE"            # 🎨 Museums, theaters, galleries, cultural sites
+    NIGHTLIFE = "NIGHTLIFE"        # 🌙 Bars, clubs, entertainment venues, live music
+    OTHER = "OTHER"                # 📌 Miscellaneous stops not fitting other categories
 
 
 class Stop(BaseModel):

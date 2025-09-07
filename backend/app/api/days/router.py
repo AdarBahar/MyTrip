@@ -2,10 +2,12 @@
 Days API router
 """
 from typing import List, Optional
+import logging
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from collections import defaultdict
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
@@ -18,9 +20,15 @@ from app.schemas.day import (
     DayWithStops, DayListWithStops, DayListSummary, DayLocations
 )
 from app.schemas.place import PlaceSchema
+from app.schemas.bulk import (
+    BulkDeleteRequest, BulkUpdateRequest, BulkReorderRequest, BulkOperationResult
+)
+from app.services.bulk_operations import BulkOperationService
+from app.services.filtering import FilteringService, FilterCondition, SortCondition
 from app.models.route import RouteVersion
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_trip_and_verify_access(trip_id: str, current_user: User, db: Session) -> Trip:
@@ -41,28 +49,94 @@ def get_trip_and_verify_access(trip_id: str, current_user: User, db: Session) ->
 async def list_days(
     trip_id: str,
     include_stops: bool = Query(False, description="Include stops count and route info"),
+    # Enhanced filtering and sorting
+    filter_string: Optional[str] = Query(None, description="Advanced filters: field:operator:value"),
+    sort_string: Optional[str] = Query(None, description="Sort: field:direction,field2:direction2"),
+    status: Optional[str] = Query(None, description="Filter by day status"),
+    date_from: Optional[date] = Query(None, description="Filter days from this date"),
+    date_to: Optional[date] = Query(None, description="Filter days until this date"),
+    search: Optional[str] = Query(None, description="Search in day titles"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    **List Days in Trip**
+    **Enhanced List Days in Trip**
 
-    Get all days for a specific trip, ordered by sequence number.
+    Get all days for a specific trip with advanced filtering and sorting capabilities.
+
+    **Enhanced Features:**
+    - ✅ **Multi-attribute filtering**: Filter by status, date range, title, etc.
+    - ✅ **Flexible sorting**: Sort by date, sequence, title, status, etc.
+    - ✅ **Search functionality**: Search across day titles
+    - ✅ **Date range filters**: Filter by date range
+    - ✅ **String-based filters**: Advanced filter syntax
+
+    **Filter Examples:**
+    - `filter_string=status:eq:completed,date:gte:2024-01-01`
+    - `sort_string=date:asc,title:asc`
+    - `search=jerusalem` (searches day titles)
+    - `date_from=2024-01-01&date_to=2024-12-31` (date range)
+
+    **Supported Filter Fields:**
+    - `date`, `title`, `status`, `seq`, `created_at`, `updated_at`
+
+    **Supported Sort Fields:**
+    - `date`, `seq`, `title`, `status`, `created_at`, `updated_at`
 
     **Authentication Required:** You must be the trip owner.
     """
     # Verify trip access
     trip = get_trip_and_verify_access(trip_id, current_user, db)
 
+    # Initialize filtering service
+    filtering_service = FilteringService()
+
+    # Build base query
+    base_query = db.query(Day).filter(
+        Day.trip_id == trip_id,
+        Day.deleted_at.is_(None)
+    )
+
+    # Enhanced filtering
+    filter_conditions = []
+
+    # Parse filter string
+    if filter_string:
+        filter_conditions.extend(filtering_service.parse_filter_string(filter_string))
+
+    # Legacy status filter (for backward compatibility)
+    if status:
+        filter_conditions.append(FilterCondition('status', 'eq', status))
+
+    # Date range filters
+    if date_from:
+        filter_conditions.append(FilterCondition('date', 'gte', date_from))
+    if date_to:
+        filter_conditions.append(FilterCondition('date', 'lte', date_to))
+
+    # Search functionality
+    if search:
+        base_query = base_query.filter(Day.title.ilike(f"%{search}%"))
+
+    # Apply advanced filters
+    allowed_filter_fields = ['date', 'title', 'status', 'seq', 'created_at', 'updated_at']
+    base_query = filtering_service.apply_filters(base_query, Day, filter_conditions, allowed_filter_fields)
+
+    # Enhanced sorting
+    sort_conditions = []
+    if sort_string:
+        sort_conditions = filtering_service.parse_sort_string(sort_string)
+
+    # Apply sorting with default fallback
+    allowed_sort_fields = ['date', 'seq', 'title', 'status', 'created_at', 'updated_at']
+    default_sort = SortCondition('seq', 'asc')
+    base_query = filtering_service.apply_sorting(base_query, Day, sort_conditions, allowed_sort_fields, default_sort)
+
     if include_stops:
         # Query with stops count and route info
-        days_query = db.query(
-            Day,
+        days_query = base_query.add_columns(
             func.count(Stop.id).label('stops_count')
-        ).outerjoin(Stop).filter(
-            Day.trip_id == trip_id,
-            Day.deleted_at.is_(None)
-        ).group_by(Day.id).order_by(Day.seq)
+        ).outerjoin(Stop).group_by(Day.id)
 
         days_with_counts = days_query.all()
 
@@ -83,10 +157,7 @@ async def list_days(
         )
     else:
         # Simple query without extra info but include trip start_date for calculated_date
-        days = db.query(Day).join(Trip).filter(
-            Day.trip_id == trip_id,
-            Day.deleted_at.is_(None)
-        ).order_by(Day.seq).all()
+        days = base_query.all()
 
         # Add trip start_date to each day for calculated_date
         days_with_trip_date = []
@@ -185,7 +256,7 @@ async def list_days_with_locations(
 
 
 
-@router.post("", response_model=DaySchema)
+@router.post("", response_model=DaySchema, status_code=201)
 async def create_day(
     trip_id: str,
     day_data: DayCreate,
@@ -338,7 +409,7 @@ async def update_day(
     return DaySchema.model_validate(day_dict)
 
 
-@router.delete("/{day_id}")
+@router.delete("/{day_id}", status_code=204)
 async def delete_day(
     trip_id: str,
     day_id: str,
@@ -374,11 +445,173 @@ async def delete_day(
 
     db.commit()
 
-    return {"message": "Day deleted successfully"}
+    # Return 204 No Content (no response body)
+    return
 
 
-# TODO: Add reorder functionality in future enhancement
-# @router.post("/{day_id}/reorder")
-# async def reorder_day(...):
-#     """Reorder days - to be implemented in future enhancement"""
-#     pass
+# Bulk Operations Endpoints
+
+@router.delete("/bulk", response_model=BulkOperationResult)
+async def bulk_delete_days(
+    trip_id: str,
+    request: BulkDeleteRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    **Bulk Delete Days**
+
+    Delete multiple days from a trip in a single operation.
+
+    **Features:**
+    - Delete up to 20 days at once
+    - Automatic cleanup of associated stops and routes
+    - Transactional safety (all or nothing)
+    - Permission validation for trip ownership
+    - Cascade deletion of dependent resources
+
+    **Request Body:**
+    ```json
+    {
+      "ids": ["day_id_1", "day_id_2", "day_id_3"],
+      "force": false
+    }
+    ```
+
+    **Use Cases:**
+    - Remove multiple days from itinerary
+    - Clear trip and start over
+    - Remove cancelled days
+    """
+    # Validate trip exists and user has access
+    trip = db.query(Trip).filter(
+        Trip.id == trip_id,
+        Trip.created_by == current_user.id
+    ).first()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found or access denied")
+
+    bulk_service = BulkOperationService(db)
+
+    async def pre_delete_hook(day: Day):
+        """Hook to handle day-specific logic before deletion"""
+        # Validate day belongs to the specified trip
+        if day.trip_id != trip_id:
+            raise ValueError(f"Day {day.id} does not belong to trip {trip_id}")
+
+        # Log the deletion for audit purposes
+        logger.info(f"Deleting day {day.id} from trip {trip_id}")
+
+    async def post_delete_hook(day: Day):
+        """Hook to handle post-deletion cleanup"""
+        # Note: Cascade deletion should handle stops and routes automatically
+        # This is just for logging/audit purposes
+        logger.info(f"Day {day.id} deleted successfully")
+
+    return await bulk_service.bulk_delete(
+        model_class=Day,
+        ids=request.ids,
+        user_id=current_user.id,
+        force=request.force,
+        pre_delete_hook=pre_delete_hook,
+        post_delete_hook=post_delete_hook
+    )
+
+
+@router.patch("/bulk", response_model=BulkOperationResult)
+async def bulk_update_days(
+    trip_id: str,
+    request: BulkUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    **Bulk Update Days**
+
+    Update multiple days in a trip in a single operation.
+
+    **Features:**
+    - Update up to 20 days at once
+    - Field-level validation and filtering
+    - Transactional safety
+    - Permission validation for trip ownership
+
+    **Allowed Update Fields:**
+    - `title`: Day title/name
+    - `date`: Day date (YYYY-MM-DD)
+    - `status`: Day status (planned, active, completed)
+    - `notes`: Day notes/description
+
+    **Request Body:**
+    ```json
+    {
+      "updates": [
+        {
+          "id": "day_id_1",
+          "data": {
+            "title": "Updated Day Title",
+            "status": "completed"
+          }
+        },
+        {
+          "id": "day_id_2",
+          "data": {
+            "date": "2024-06-16",
+            "notes": "Updated notes"
+          }
+        }
+      ]
+    }
+    ```
+
+    **Use Cases:**
+    - Batch update day titles
+    - Mark multiple days as completed
+    - Update dates for multiple days
+    - Add notes to multiple days
+    """
+    # Validate trip exists and user has access
+    trip = db.query(Trip).filter(
+        Trip.id == trip_id,
+        Trip.created_by == current_user.id
+    ).first()
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found or access denied")
+
+    bulk_service = BulkOperationService(db)
+
+    # Define allowed fields for bulk updates
+    allowed_fields = ['title', 'date', 'status', 'notes']
+
+    async def pre_update_hook(day: Day, update_data: dict):
+        """Hook to handle day-specific logic before update"""
+        # Validate day belongs to the specified trip
+        if day.trip_id != trip_id:
+            raise ValueError(f"Day {day.id} does not belong to trip {trip_id}")
+
+        # Validate status if being updated
+        if 'status' in update_data:
+            try:
+                DayStatus(update_data['status'])
+            except ValueError:
+                raise ValueError(f"Invalid status: {update_data['status']}")
+
+        # Validate date format if being updated
+        if 'date' in update_data:
+            from datetime import datetime
+            try:
+                datetime.strptime(str(update_data['date']), '%Y-%m-%d')
+            except ValueError:
+                raise ValueError(f"Invalid date format: {update_data['date']}. Use YYYY-MM-DD")
+
+        return update_data
+
+    return await bulk_service.bulk_update(
+        model_class=Day,
+        updates=request.updates,
+        user_id=current_user.id,
+        allowed_fields=allowed_fields,
+        pre_update_hook=pre_update_hook
+    )
