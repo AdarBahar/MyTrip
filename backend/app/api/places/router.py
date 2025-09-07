@@ -1,13 +1,15 @@
 """
 Places API router
 """
-from typing import Optional, List, Dict, Any, Set
+from typing import Optional, List, Dict, Any, Set, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
 from sqlalchemy.orm import Session
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import httpx
 from urllib.parse import quote
+import time
+from functools import lru_cache
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
@@ -16,14 +18,52 @@ from app.models.user import User
 from app.models.place import Place, OwnerType
 from app.schemas.place import (
     PlaceCreate, PlaceUpdate, PlaceSchema,
-    PlaceSearchResult, PlaceSearchItem, GeocodingResult
+    PlaceSearchResult, PlaceSearchItem, GeocodingResult, PlaceSearchPaginatedResponse
 )
+from app.schemas.pagination import create_paginated_response, get_base_url
 from fastapi.encoders import jsonable_encoder
 
 router = APIRouter()
 
 # Utilities for ETag generation
 import hashlib
+
+# Simple in-memory cache for place search results
+class PlaceSearchCache:
+    def __init__(self, ttl_seconds=300):  # 5 minutes TTL
+        self.cache = {}
+        self.ttl_seconds = ttl_seconds
+
+    def _make_key(self, query: str, lat: Optional[float], lon: Optional[float], limit: int) -> str:
+        """Create cache key from search parameters"""
+        return f"{query.lower().strip()}:{lat}:{lon}:{limit}"
+
+    def get(self, query: str, lat: Optional[float], lon: Optional[float], limit: int) -> Optional[List[Dict]]:
+        """Get cached results if still valid"""
+        key = self._make_key(query, lat, lon, limit)
+        if key in self.cache:
+            result, timestamp = self.cache[key]
+            if time.time() - timestamp < self.ttl_seconds:
+                return result
+            else:
+                # Expired, remove from cache
+                del self.cache[key]
+        return None
+
+    def set(self, query: str, lat: Optional[float], lon: Optional[float], limit: int, results: List[Dict]):
+        """Cache search results"""
+        key = self._make_key(query, lat, lon, limit)
+        self.cache[key] = (results, time.time())
+
+        # Simple cleanup: remove expired entries if cache gets too large
+        if len(self.cache) > 1000:
+            current_time = time.time()
+            expired_keys = [k for k, (_, ts) in self.cache.items() if current_time - ts >= self.ttl_seconds]
+            for k in expired_keys:
+                del self.cache[k]
+
+# Global cache instance
+place_search_cache = PlaceSearchCache()
 
 # ---------------- Address Normalization Utilities ---------------- #
 
@@ -111,23 +151,67 @@ def _quote_etag(tag: str) -> str:
 
 
 
-@router.get("/search", response_model=PlaceSearchResult)
+@router.get("/search", response_model=Union[PlaceSearchPaginatedResponse, PlaceSearchResult])
 async def search_places(
-    query: str = Query(..., min_length=2),
-    lat: Optional[float] = Query(None, ge=-90, le=90),
-    lon: Optional[float] = Query(None, ge=-180, le=180),
-    radius: Optional[int] = Query(50000, ge=1),
-    limit: int = Query(10, ge=1, le=50),
+    request: Request,
+    query: str = Query(..., min_length=2, description="Search term (minimum 2 characters)"),
+    lat: Optional[float] = Query(None, ge=-90, le=90, description="Latitude for proximity search"),
+    lon: Optional[float] = Query(None, ge=-180, le=180, description="Longitude for proximity search"),
+    radius: Optional[int] = Query(50000, ge=1, description="Search radius in meters"),
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of results"),
+    format: Optional[str] = Query("modern", regex="^(legacy|modern)$", description="Response format"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Search for places by name using MapTiler geocoding API.
+    """
+    **Enhanced Place Search with Modern Pagination**
 
-    This returns a list of candidate places without creating records in the database.
+    Search for places by name using MapTiler geocoding API with aggressive caching and modern pagination.
+
+    **Features:**
+    - Aggressive caching (5-minute TTL) for improved performance
+    - Proximity-based search with lat/lon parameters
+    - Integration with user's saved places
+    - Modern pagination with navigation links
+
+    **Parameters:**
+    - `query`: Search term (minimum 2 characters)
+    - `lat/lon`: Optional coordinates for proximity-based results
+    - `radius`: Search radius in meters (default: 50km)
+    - `limit`: Maximum results (1-50, default: 10)
+    - `format`: Response format - 'modern' (default) or 'legacy'
+
+    **Modern Response Format:**
+    ```json
+    {
+      "data": [...],
+      "meta": {
+        "current_page": 1,
+        "per_page": 10,
+        "total_items": 25,
+        "total_pages": 3,
+        "has_next": true,
+        "has_prev": false
+      },
+      "links": {
+        "self": "http://localhost:8000/places/search?query=jerusalem&page=1",
+        "first": "http://localhost:8000/places/search?query=jerusalem&page=1",
+        "next": "http://localhost:8000/places/search?query=jerusalem&page=2"
+      }
+    }
+    ```
+
+    **Returns:** List of candidate places without creating database records.
     """
     if not settings.MAPTILER_API_KEY:
         # Return empty but valid response if no API key configured
         return PlaceSearchResult(places=[], total=0)
+
+    # Check cache first
+    cached_results = place_search_cache.get(query, lat, lon, limit)
+    if cached_results is not None:
+        logging.info(f"Place search cache hit for query: {query}")
+        return PlaceSearchResult(places=cached_results, total=len(cached_results))
 
     # Build MapTiler Geocoding API request (Mapbox-compatible style)
     params: Dict[str, Any] = {
@@ -203,7 +287,35 @@ async def search_places(
             # On failure, return empty result to not break UX
             return PlaceSearchResult(places=[], total=0)
 
-    return PlaceSearchResult(places=places, total=total)
+    # Cache the results for future requests
+    place_search_cache.set(query, lat, lon, limit, places)
+    logging.info(f"Place search cached for query: {query}, found {len(places)} results")
+
+    # Support both legacy and modern response formats
+    if format == "legacy":
+        return PlaceSearchResult(places=places, total=total)
+
+    # Modern response with navigation links
+    # For search results, we treat it as a single page since external API doesn't support pagination
+    base_url = get_base_url(request, "/places/search")
+    query_params = {"query": query}
+    if lat is not None:
+        query_params["lat"] = lat
+    if lon is not None:
+        query_params["lon"] = lon
+    if radius != 50000:  # Only include if not default
+        query_params["radius"] = radius
+    if limit != 10:  # Only include if not default
+        query_params["limit"] = limit
+
+    return create_paginated_response(
+        items=places,
+        total_items=len(places),  # Search results are single page
+        current_page=1,
+        per_page=len(places) if places else limit,
+        base_url=base_url,
+        query_params=query_params
+    )
 
 
 @router.get("/geocode", response_model=List[GeocodingResult])
@@ -283,7 +395,7 @@ async def reverse_geocode(
             return []
 
 
-@router.post("/", response_model=PlaceSchema)
+@router.post("/", response_model=PlaceSchema, status_code=201)
 async def create_place(
     place_data: PlaceCreate,
     current_user: User = Depends(get_current_user),

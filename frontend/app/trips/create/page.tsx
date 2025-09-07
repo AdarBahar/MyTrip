@@ -10,30 +10,36 @@ import { Label } from '@/components/ui/label'
 
 import { ArrowLeft, MapPin, Calendar, Loader2 } from 'lucide-react'
 import { fetchWithAuth } from '@/lib/auth'
+import { createTrip, TripCreate } from '@/lib/api/trips'
+import { ErrorDisplay, SuccessDisplay, useAPIResponseHandler } from '@/components/ui/error-display'
 
 export default function CreateTripPage() {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<TripCreate>({
     title: '',
     destination: '',
-    start_date: '',
-    description: ''
+    start_date: null
   })
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { error, success, handleResponse, clearMessages } = useAPIResponseHandler()
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: value || null
     }))
+
+    // Clear messages when user starts typing
+    if (error || success) {
+      clearMessages()
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    setError(null)
+    clearMessages()
 
     try {
       // Check authentication
@@ -43,59 +49,25 @@ export default function CreateTripPage() {
         return
       }
 
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
-      
-      // Create the trip
-      const requestBody: any = {
-        title: formData.title,
-        destination: formData.destination,
-        timezone: 'UTC', // Default timezone
-        status: 'draft', // Default status
-        is_published: false // Default to unpublished
+      const response = await createTrip(formData)
+      const result = handleResponse(response, `Trip "${formData.title}" created successfully!`)
+
+      if (result) {
+        // Handle successful creation (201 Created)
+        const tripData = result.trip
+
+        // Redirect to the new trip's detail page
+        router.push(`/trips/${tripData.slug}`)
       }
-
-      // Only include start_date if it's provided
-      if (formData.start_date) {
-        requestBody.start_date = formData.start_date
-      }
-
-      const response = await fetchWithAuth(`${apiBaseUrl}/trips/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        let errorMessage = `Failed to create trip: ${response.status}`
-
-        if (errorData.detail) {
-          if (Array.isArray(errorData.detail)) {
-            // Handle validation errors
-            errorMessage = errorData.detail.map((err: any) => err.msg || err).join(', ')
-          } else {
-            errorMessage = errorData.detail
-          }
-        }
-
-        throw new Error(errorMessage)
-      }
-
-      const newTrip = await response.json()
-      
-      // Redirect to the new trip's detail page
-      router.push(`/trips/${newTrip.slug}`)
     } catch (err) {
       console.error('Error creating trip:', err)
-      setError(err instanceof Error ? err.message : 'Failed to create trip')
+      // Error is handled by useAPIResponseHandler
     } finally {
       setLoading(false)
     }
   }
 
-  const isFormValid = formData.title.trim() && formData.destination.trim()
+  const isFormValid = formData.title.trim() && formData.destination?.trim()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -129,11 +101,23 @@ export default function CreateTripPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Error Message */}
+                {/* Success Message */}
+                {success && (
+                  <SuccessDisplay
+                    message={success.message}
+                    type={success.type}
+                    onDismiss={clearMessages}
+                  />
+                )}
+
+                {/* Enhanced Error Display */}
                 {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                    <p className="text-red-800 text-sm">{error}</p>
-                  </div>
+                  <ErrorDisplay
+                    error={error}
+                    showSuggestions={true}
+                    showRequestId={true}
+                    onRetry={() => handleSubmit({ preventDefault: () => {} } as React.FormEvent)}
+                  />
                 )}
 
                 {/* Trip Title */}
@@ -159,7 +143,7 @@ export default function CreateTripPage() {
                     name="destination"
                     type="text"
                     placeholder="e.g., California, USA"
-                    value={formData.destination}
+                    value={formData.destination || ''}
                     onChange={handleInputChange}
                     required
                     disabled={loading}
@@ -173,26 +157,22 @@ export default function CreateTripPage() {
                     id="start_date"
                     name="start_date"
                     type="date"
-                    value={formData.start_date}
+                    value={formData.start_date || ''}
                     onChange={handleInputChange}
                     disabled={loading}
                     min={new Date().toISOString().split('T')[0]} // Prevent past dates
                   />
                 </div>
 
-                {/* Description */}
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description (Optional)</Label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    placeholder="Tell us about your trip plans..."
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    disabled={loading}
-                    rows={4}
-                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  />
+                {/* Enhanced Features Notice */}
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                  <h4 className="text-sm font-medium text-blue-800 mb-2">✨ Enhanced Features</h4>
+                  <ul className="text-xs text-blue-700 space-y-1">
+                    <li>• Returns 201 Created on successful creation</li>
+                    <li>• Shows structured validation errors</li>
+                    <li>• Displays actionable suggestions</li>
+                    <li>• Includes request tracking for debugging</li>
+                  </ul>
                 </div>
 
                 {/* Form Actions */}

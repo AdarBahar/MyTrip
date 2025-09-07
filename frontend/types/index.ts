@@ -68,11 +68,36 @@ export interface DayUpdate {
   notes?: Record<string, any> | null;
 }
 
-// API Response types
+// API Response types (legacy)
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
   message?: string;
+}
+
+// Enhanced API Response types (Phase 1 Migration)
+export interface APIError {
+  error_code: string;
+  message: string;
+  details?: Record<string, any>;
+  field_errors?: Record<string, string[]>;
+  suggestions?: string[];
+}
+
+export interface APIErrorResponse {
+  error: APIError;
+  timestamp: string;
+  request_id?: string;
+  path?: string;
+}
+
+export interface APIResponse<T> {
+  data?: T;
+  error?: APIError;
+  success: boolean;
+  status: number;
+  created?: boolean;  // For 201 responses
+  deleted?: boolean;  // For 204 responses
 }
 
 // Date utility types

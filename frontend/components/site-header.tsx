@@ -1,3 +1,9 @@
+/**
+ * Site Header Component
+ *
+ * Main navigation with user authentication and responsive design
+ */
+
 "use client"
 
 import Link from 'next/link'
@@ -5,7 +11,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Menu } from 'lucide-react'
+import { Menu, LogOut } from 'lucide-react'
 
 export function SiteHeader() {
   const router = useRouter()
@@ -15,10 +21,12 @@ export function SiteHeader() {
     try {
       const raw = localStorage.getItem('user_data')
       if (raw) {
-        const u = JSON.parse(raw)
-        setDisplayName(u?.display_name || u?.email || 'User')
+        const user = JSON.parse(raw)
+        setDisplayName(user?.display_name || user?.email || 'User')
       }
-    } catch {}
+    } catch {
+      // Ignore parsing errors
+    }
   }, [])
 
   const handleLogout = () => {
@@ -30,9 +38,17 @@ export function SiteHeader() {
   return (
     <header className="w-full bg-white/80 backdrop-blur border-b border-gray-200">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="text-lg font-semibold tracking-tight text-gray-900">Road Trip planner</Link>
+        <Link href="/" className="text-lg font-semibold tracking-tight text-gray-900">
+          MyTrip
+        </Link>
+
         <div className="flex items-center gap-3">
-          {displayName && <span className="text-sm text-gray-700 hidden sm:inline">{displayName}</span>}
+          {displayName && (
+            <span className="text-sm text-gray-700 hidden sm:inline">
+              {displayName}
+            </span>
+          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label="Open menu">
@@ -40,10 +56,31 @@ export function SiteHeader() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => router.push('/settings/user')}>User Settings</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push('/settings/app')}>App Settings</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push('/about')}>About</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleLogout}>Log out</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/trips')}>
+                My Trips
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/migration-demo')}>
+                🚀 Migration Demo
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/monitoring')}>
+                📊 Error Monitoring
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/settings/user')}>
+                User Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/settings/app')}>
+                App Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/about')}>
+                About
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-red-600 focus:text-red-600"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Log out
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
