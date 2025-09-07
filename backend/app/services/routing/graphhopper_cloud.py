@@ -51,8 +51,7 @@ class GraphHopperCloudProvider(RoutingProvider):
             "instructions": True,
             "calc_points": True,
             "debug": True,
-            "elevation": False,
-            "turn_costs": True if profile in ["car", "motorcycle"] else False
+            "elevation": False
         }
 
         # Add points as repeated query params (?point=a&point=b)

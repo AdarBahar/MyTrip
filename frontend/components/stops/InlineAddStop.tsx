@@ -101,7 +101,18 @@ export default function InlineAddStop({ tripId, dayId, dayCenter, onAdded, onCan
         }
         window.dispatchEvent(new CustomEvent('day-summary-updated', { detail: { dayId, loc } }))
       } catch {}
-    } catch {}
+    } catch (e: any) {
+      // Log routing errors instead of silently swallowing them
+      console.error('Auto-route computation failed after adding stop:', e);
+
+      // Show user feedback for routing failures
+      if (e?.status === 429) {
+        // Rate limit errors are already handled by the routing API
+        console.warn('Routing rate limited after adding stop');
+      } else {
+        console.warn('Route computation failed after adding stop, user can manually recompute');
+      }
+    }
 
     onVisualsChange && onVisualsChange('', []);
     try { window.dispatchEvent(new CustomEvent('stops-mutated', { detail: { dayId } })) } catch {}

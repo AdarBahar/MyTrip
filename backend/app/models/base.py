@@ -1,5 +1,5 @@
 """
-Base model classes and utilities
+Base model classes and utilities with ISO-8601 datetime standardization
 """
 from datetime import datetime
 from typing import Optional
@@ -8,17 +8,29 @@ from sqlalchemy.ext.declarative import declared_attr
 from ulid import ULID
 
 from app.core.database import Base
+from app.core.datetime_utils import DateTimeStandards
 
 
 class TimestampMixin:
-    """Mixin for created_at and updated_at timestamps"""
+    """
+    Mixin for created_at and updated_at timestamps with ISO-8601 standardization
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    All timestamps are stored in UTC and serialized to ISO-8601 format
+    for consistent datetime handling across the API.
+    """
+
+    created_at = Column(
+        DateTime(timezone=True),
+        default=DateTimeStandards.now_utc,
+        nullable=False,
+        doc="Creation timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)"
+    )
     updated_at = Column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-        nullable=False
+        DateTime(timezone=True),
+        default=DateTimeStandards.now_utc,
+        onupdate=DateTimeStandards.now_utc,
+        nullable=False,
+        doc="Last update timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)"
     )
 
 
@@ -31,16 +43,26 @@ class ULIDMixin:
 
 
 class SoftDeleteMixin:
-    """Mixin for soft delete functionality"""
+    """
+    Mixin for soft delete functionality with ISO-8601 standardization
 
-    deleted_at = Column(DateTime, nullable=True)
+    Soft delete timestamps are stored in UTC and serialized to ISO-8601 format.
+    """
+
+    deleted_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="Soft delete timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)"
+    )
 
     @property
     def is_deleted(self) -> bool:
+        """Check if the record is soft deleted"""
         return self.deleted_at is not None
 
     def soft_delete(self):
-        self.deleted_at = datetime.utcnow()
+        """Mark the record as soft deleted with current UTC timestamp"""
+        self.deleted_at = DateTimeStandards.now_utc()
 
 
 class BaseModel(Base, ULIDMixin, TimestampMixin):
