@@ -10,27 +10,38 @@ import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trip, TripListResponse } from '@/types/trip'
 import { listTripsEnhanced, deleteTrip as deleteTrip } from '@/lib/api/trips'
-import { useAPIResponseHandler } from '@/components/ui/error-display'
+
 
 export const useTrips = () => {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(false)
-  const { handleResponse } = useAPIResponseHandler()
+  const [error, setError] = useState<string | null>(null)
 
   const fetchTrips = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const response = await listTripsEnhanced()
-      const result = handleResponse(response)
-      if (result) {
-        setTrips(result.data || [])
+      console.log('useTrips: Received response:', response)
+
+      if (response.success && response.data) {
+        // The API returns { data: Trip[], meta: any, links: any }
+        const trips = response.data.data || []
+        console.log('useTrips: Setting trips:', trips)
+        setTrips(trips)
+      } else {
+        console.error('useTrips: Failed to fetch trips:', response.error)
+        setError(response.error?.message || 'Failed to fetch trips')
+        setTrips([])
       }
     } catch (error) {
-      console.error('Error fetching trips:', error)
+      console.error('useTrips: Error fetching trips:', error)
+      setError(error instanceof Error ? error.message : 'Failed to fetch trips')
+      setTrips([])
     } finally {
       setLoading(false)
     }
-  }, [handleResponse])
+  }, []) // No dependencies to prevent infinite loop
 
   const handleDeleteTrip = useCallback(async (tripId: string) => {
     try {
@@ -49,6 +60,7 @@ export const useTrips = () => {
   return {
     trips,
     loading,
+    error,
     fetchTrips,
     deleteTrip: handleDeleteTrip
   }

@@ -72,10 +72,10 @@ class GraphHopperSelfHostProvider(RoutingProvider):
     ) -> Dict[str, Any]:
         """Build request parameters for self-hosted GraphHopper"""
 
-        # Convert points to GraphHopper format
+        # Convert points to GraphHopper format (longitude, latitude)
         point_params = []
         for point in points:
-            point_params.append([point.lat, point.lon])
+            point_params.append([point.lon, point.lat])
 
         params = {
             "profile": profile,
@@ -276,8 +276,8 @@ class GraphHopperSelfHostProvider(RoutingProvider):
                 payload = {
                     "profile": profile,
                     "points": [
-                        [points[i].lat, points[i].lon],
-                        [points[j].lat, points[j].lon],
+                        [points[i].lon, points[i].lat],
+                        [points[j].lon, points[j].lat],
                     ],
                     "points_encoded": False,
                     "instructions": False,

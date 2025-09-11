@@ -9,25 +9,13 @@
 import React, { useState } from 'react'
 import { Calendar, MapPin, MoreVertical, Edit, Trash2 } from 'lucide-react'
 import { Trip, TripCardProps } from '@/types/trip'
+import { formatTripDate, formatRelativeTime } from '@/lib/utils/date-format'
 
 const statusStyles = {
   draft: { bg: 'bg-gray-100', text: 'text-gray-700', icon: '📝' },
   active: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '✈️' },
   completed: { bg: 'bg-green-100', text: 'text-green-700', icon: '✅' },
   archived: { bg: 'bg-gray-100', text: 'text-gray-600', icon: '📦' }
-}
-
-const formatDate = (dateString?: string): string => {
-  if (!dateString) return 'No date set'
-  try {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  } catch {
-    return 'Invalid date'
-  }
 }
 
 export const TripCard: React.FC<TripCardProps> = ({
@@ -133,10 +121,15 @@ export const TripCard: React.FC<TripCardProps> = ({
             <div className="flex items-center text-gray-600">
               <Calendar className="h-4 w-4 mr-2" />
               <span className="text-sm">
-                Starts {formatDate(trip.start_date)}
+                Starts {formatTripDate(trip.start_date)}
               </span>
             </div>
           )}
+
+          {/* Created date */}
+          <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
+            Created {formatRelativeTime(trip.created_at)}
+          </div>
         </div>
       </div>
 

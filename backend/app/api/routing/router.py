@@ -25,6 +25,8 @@ from app.schemas.route import (
     DayRouteActiveSummary,
     BulkDayRouteSummaryRequest,
     BulkDayRouteSummaryResponse,
+    DayRouteBreakdownRequest,
+    DayRouteBreakdownResponse,
 )
 from app.services.routing import (
     get_routing_provider,
@@ -33,6 +35,7 @@ from app.services.routing import (
     RouteLeg as RouteLegData,
 )
 from app.services.routing.base import RoutingRateLimitError
+from app.services.routing.day_route_breakdown import compute_day_route_breakdown
 from shapely.geometry import LineString
 from app.core.config import settings
 
@@ -651,3 +654,76 @@ async def get_bulk_active_summaries(body: BulkDayRouteSummaryRequest, db: Sessio
         ))
 
     return BulkDayRouteSummaryResponse(summaries=summaries)
+
+
+@router.post("/days/route-breakdown", response_model=DayRouteBreakdownResponse)
+async def compute_day_route_breakdown_endpoint(
+    request: DayRouteBreakdownRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Compute detailed route breakdown for a complete day's journey
+
+    This endpoint provides segment-by-segment routing information:
+    - Start to Stop 1
+    - Stop 1 to Stop 2
+    - Stop 2 to Stop 3
+    - ...
+    - Stop N to End
+
+    Each segment includes:
+    - Distance in kilometers
+    - Duration in minutes
+    - Turn-by-turn instructions
+    - Route geometry (GeoJSON)
+
+    The response also includes total distance and duration for the entire day.
+    """
+    try:
+        # Validate that the trip and day exist
+        day = db.query(Day).filter(Day.id == request.day_id).first()
+        if not day:
+            raise HTTPException(status_code=404, detail="Day not found")
+
+        trip = db.query(Trip).filter(Trip.id == request.trip_id).first()
+        if not trip:
+            raise HTTPException(status_code=404, detail="Trip not found")
+
+        # Verify day belongs to trip
+        if day.trip_id != request.trip_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Day does not belong to the specified trip"
+            )
+
+        # Validate points
+        if not request.start:
+            raise HTTPException(status_code=400, detail="Start point is required")
+
+        if not request.end:
+            raise HTTPException(status_code=400, detail="End point is required")
+
+        # Compute the detailed breakdown
+        logger.info(
+            f"Computing route breakdown for trip {request.trip_id}, "
+            f"day {request.day_id} with {len(request.stops)} stops"
+        )
+
+        breakdown = await compute_day_route_breakdown(request)
+
+        logger.info(
+            f"Route breakdown computed: {breakdown.total_distance_km:.2f}km, "
+            f"{breakdown.total_duration_min:.1f}min across {len(breakdown.segments)} segments"
+        )
+
+        return breakdown
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compute day route breakdown: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to compute route breakdown: {str(e)}"
+        )

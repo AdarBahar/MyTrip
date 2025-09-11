@@ -129,6 +129,8 @@ export function ErrorDashboard() {
         
         <div className="flex items-center space-x-4">
           <select
+            id="time-range-select"
+            name="time-range"
             value={timeRange}
             onChange={(e) => setTimeRange(Number(e.target.value))}
             className="border border-gray-300 rounded-md px-3 py-2 text-sm"

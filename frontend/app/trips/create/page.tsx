@@ -17,9 +17,13 @@ export default function CreateTripPage() {
   const [formData, setFormData] = useState<TripCreate>({
     title: '',
     destination: '',
-    start_date: null
+    start_date: null,
+    timezone: 'UTC',
+    status: 'draft',
+    is_published: false
   })
   const [loading, setLoading] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
   const router = useRouter()
   const { error, success, handleResponse, clearMessages } = useAPIResponseHandler()
 
@@ -39,6 +43,7 @@ export default function CreateTripPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setLocalError(null)
     clearMessages()
 
     try {
@@ -49,8 +54,14 @@ export default function CreateTripPage() {
         return
       }
 
-      const response = await createTrip(formData)
-      const result = handleResponse(response, `Trip "${formData.title}" created successfully!`)
+      // Add timestamp to make title more unique if it's very generic
+      const submitData = { ...formData }
+      if (formData.title.toLowerCase().trim() === 'trip' || formData.title.toLowerCase().trim() === 'my trip') {
+        submitData.title = `${formData.title} ${new Date().toISOString().slice(0, 10)}`
+      }
+
+      const response = await createTrip(submitData)
+      const result = handleResponse(response, `Trip "${submitData.title}" created successfully!`)
 
       if (result) {
         // Handle successful creation (201 Created)
@@ -59,9 +70,15 @@ export default function CreateTripPage() {
         // Redirect to the new trip's detail page
         router.push(`/trips/${tripData.slug}`)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating trip:', err)
-      // Error is handled by useAPIResponseHandler
+
+      // Handle specific conflict errors
+      if (err?.status === 409 || err?.error_code === 'RESOURCE_CONFLICT') {
+        setLocalError('A trip with this title already exists. Please choose a different title.')
+      } else {
+        setLocalError('Failed to create trip. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -108,6 +125,13 @@ export default function CreateTripPage() {
                     type={success.type}
                     onDismiss={clearMessages}
                   />
+                )}
+
+                {/* Local Error Display for Conflicts */}
+                {localError && (
+                  <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-red-700">{localError}</p>
+                  </div>
                 )}
 
                 {/* Enhanced Error Display */}

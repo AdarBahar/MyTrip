@@ -7,6 +7,9 @@ help:
 	@echo "  down         - Stop all services"
 	@echo "  logs         - View logs from all services"
 	@echo "  restart      - Restart all services"
+	@echo "  hard-restart - Stop, clean, and restart all services"
+	@echo "  status       - Check service status and health"
+	@echo "  fix-docker   - Fix Docker daemon issues"
 	@echo "  clean        - Clean up containers and volumes"
 	@echo "  build        - Build all Docker images"
 	@echo ""
@@ -62,6 +65,9 @@ restart:
 	# Ensure GraphHopper is included and up when in selfhost mode
 	docker-compose $(PROFILE_FLAGS) up -d graphhopper
 	docker-compose $(PROFILE_FLAGS) restart
+	@echo "Services restarted. Checking health..."
+	@sleep 5
+	@$(MAKE) status
 
 clean:
 	docker-compose down -v --remove-orphans
@@ -69,6 +75,27 @@ clean:
 
 build:
 	docker-compose $(PROFILE_FLAGS) build
+
+# Status and health check commands
+status:
+	@echo "🔍 Checking service status..."
+	@docker ps --filter "name=roadtrip" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+	@echo ""
+	@echo "🏥 Health checks:"
+	@curl -s http://localhost:8000/health 2>/dev/null | jq -r '"Backend: " + .status + " (" + .routing_mode + " mode)"' || echo "Backend: Not responding"
+	@curl -s http://localhost:8989/health 2>/dev/null | sed 's/^/GraphHopper: /' || echo "GraphHopper: Not responding"
+	@curl -s http://localhost:3500 2>/dev/null >/dev/null && echo "Frontend: Responding" || echo "Frontend: Not responding"
+
+fix-docker:
+	@echo "🔧 Running Docker restart fix..."
+	@./scripts/fix_docker_restart.sh
+
+hard-restart:
+	@echo "🔄 Performing hard restart..."
+	docker-compose down --remove-orphans
+	docker system prune -f
+	$(MAKE) up
+	@echo "Hard restart complete!"
 
 # Database commands
 db.migrate:

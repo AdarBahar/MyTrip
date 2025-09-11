@@ -11,7 +11,7 @@ import { fetchWithAuth } from '@/lib/auth'
 import { MinimalDebugToggle } from '@/components/minimal-debug'
 import { TripDateActions } from '@/components/trips/trip-date-actions'
 import { DaysList } from '@/components/days'
-import { Trip } from '@/lib/api/trips'
+import { Trip, listTripsEnhanced } from '@/lib/api/trips'
 import { getApiBase } from '@/lib/api/base'
 import { getDaysSummary, DayLocationsSummary } from '@/lib/api/days'
 import { getBulkDayActiveSummaries } from '@/lib/api/routing'
@@ -208,21 +208,26 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
 
   const fetchTripDetails = async () => {
     try {
-      const apiBaseUrl = await getApiBase()
+      // Use the enhanced API function instead of raw fetch
+      const tripsResponse = await listTripsEnhanced()
+      console.log('Trips API response:', tripsResponse) // Debug log
 
-      // First, get all trips to find the one with matching slug
-      const tripsResponse = await fetchWithAuth(`${apiBaseUrl}/trips/`)
-      if (!tripsResponse.ok) {
-        throw new Error(`Failed to fetch trips: ${tripsResponse.status}`)
+      if (!tripsResponse.success || !tripsResponse.data) {
+        throw new Error('Failed to fetch trips')
       }
 
-      const tripsData = await tripsResponse.json()
-      const foundTrip = tripsData.trips.find((t: Trip) => t.slug === params.slug)
+      // Find the trip with matching slug
+      const trips = tripsResponse.data.data || []
+      const foundTrip = trips.find((t: Trip) => t.slug === params.slug)
 
       if (!foundTrip) {
+        console.log('Trip not found. Available trips:', trips.map((t: Trip) => ({ id: t.id, slug: t.slug, title: t.title })))
         setError('Trip not found')
         return
       }
+
+      // Get API base URL for the remaining calls
+      const apiBaseUrl = await getApiBase()
 
       // Fetch trip details and days summary in parallel
       const [tripResponse, summaryResp] = await Promise.all([

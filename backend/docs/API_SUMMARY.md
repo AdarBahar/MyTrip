@@ -2,7 +2,7 @@
 
 ## 📊 API Overview
 
-- **Total Endpoints**: 43
+- **Total Endpoints**: 70
 - **API Version**: 1.0.0
 - **OpenAPI Version**: 3.1.0
 
@@ -29,12 +29,28 @@
 ## 📋 Endpoint Categories
 
 - **Auth**: 3 endpoints
-- **Days**: 6 endpoints
-- **Places**: 8 endpoints
-- **Routing**: 8 endpoints
+- **Days**: 8 endpoints
+- **Enums**: 5 endpoints
+- **Monitoring**: 8 endpoints
+- **Places**: 12 endpoints (includes geocoding endpoints)
+- **Places-Typeahead**: 16 endpoints
+- **Routing**: 9 endpoints
 - **Settings**: 2 endpoints
-- **Stops**: 8 endpoints
-- **Trips**: 6 endpoints
+- **Stops**: 12 endpoints
+- **Trips**: 9 endpoints
+
+## 🗺️ New Geocoding Features
+
+### Forward Geocoding
+- **GET /places/geocode** - Convert addresses to coordinates using MapTiler API
+- Supports worldwide address search
+- Returns precise GPS coordinates
+- Multi-language support (Hebrew, English, etc.)
+
+### Reverse Geocoding
+- **GET /places/reverse-geocode** - Convert coordinates to addresses
+- Accurate address lookup from lat/lng
+- Useful for map click events and location services
 
 ## 🔗 Quick Links
 

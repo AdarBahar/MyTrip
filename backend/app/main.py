@@ -60,6 +60,7 @@ app = FastAPI(
     - ✅ **Days Organization**: Day-by-day trip planning with automatic date calculation
     - ✅ **Stops Management**: Comprehensive stops system with 12 categories and detailed planning
     - ✅ **Intelligent Routing**: Hybrid GraphHopper routing with automatic fallback
+    - ✅ **Places API with Type-ahead**: Fast, accurate search for addresses and POIs with real-time suggestions
     - ✅ **Enhanced Error Handling**: Actionable error messages with recovery guidance
     - ✅ **Place Search Caching**: Aggressive caching for improved performance
     - ✅ **Rate Limit Management**: Exponential backoff and circuit breaker patterns
@@ -355,28 +356,96 @@ app = FastAPI(
     - **Range filters**: Date ranges, duration ranges, numeric ranges
     - **Multi-value filters**: Select multiple statuses, types, etc.
 
-    ## 🔍 Place Search & Geocoding
+    ## 🔍 Places API with Type-ahead Suggestions
 
-    ### Enhanced Place Search
-    The API provides intelligent place search with aggressive caching:
+    ### Advanced Address & POI Search
+    The API provides fast, accurate search for addresses and points of interest with real-time type-ahead suggestions:
 
-    #### Search Features
+    #### Core Features
+    - **Type-ahead Suggestions**: Real-time predictions while typing (150-250ms debounce recommended)
+    - **Geographic Coordinates**: WGS-84 decimal degrees for all results
+    - **Session Management**: Session tokens for grouping related requests
+    - **Proximity Bias**: Location-based result prioritization
+    - **Category Filtering**: Filter by hotel, restaurant, museum, address, etc.
+    - **Text Highlighting**: Highlighted matching text for UI rendering
+
+    #### API Endpoints
+    - **GET /places/v1/places/suggest**: Lightweight type-ahead suggestions
+    - **GET /places/v1/places/search**: Full search with comprehensive details
+    - **GET /places/v1/places/{id}**: Detailed place information
+    - **GET /places/v1/places/**: Health check endpoint
+
+    #### Type-ahead Suggestions Parameters
+    - **q**: Search query (required, 1-256 characters)
+    - **session_token**: Session token for grouping requests (required)
+    - **lat/lng**: Optional proximity coordinates for bias
+    - **radius**: Search radius in meters (1-50,000)
+    - **bbox**: Bounding box filter (minLon,minLat,maxLon,maxLat)
+    - **countries**: Comma-separated ISO-3166-1 alpha-2 codes
+    - **categories**: Comma-separated category filters
+    - **lang**: BCP-47 language code (default: en)
+    - **limit**: Maximum results (1-20, default: 8)
+
+    #### Full Search Parameters
+    All suggestion parameters plus:
+    - **page_token**: Pagination token for next page
+    - **offset**: Result offset for pagination
+    - **open_now**: Filter for currently open POIs
+    - **sort**: Sort order (relevance, distance, rating, popularity)
+
+    #### Example Type-ahead Request
+    ```
+    GET /places/v1/places/suggest?q=montef&lat=32.07&lng=34.78&radius=5000&countries=IL&categories=hotel,restaurant&lang=en&limit=8&session_token=st_123
+    ```
+
+    #### Example Response
+    ```json
+    {
+      "session_token": "st_123",
+      "suggestions": [
+        {
+          "id": "poi_hotel_montefiore",
+          "name": "Hotel Montefiore",
+          "highlighted": "Hotel <b>Montef</b>iore",
+          "formatted_address": "36 Montefiore St, Tel Aviv-Yafo, Israel",
+          "types": ["lodging", "poi"],
+          "center": {"lat": 32.0643, "lng": 34.7748},
+          "distance_m": 850,
+          "confidence": 0.91,
+          "source": "internal"
+        }
+      ]
+    }
+    ```
+
+    #### Performance & Reliability
+    - **Rate Limiting**: 50 RPS for suggestions, 30 RPS for search
+    - **Caching**: Multi-layer caching with 5-minute TTL
+    - **Error Handling**: Comprehensive error responses with retry guidance
+    - **Input Validation**: Query length limits and sanitization
+    - **Request Tracking**: Unique request IDs for debugging
+
+    #### Text Matching & Ranking
+    - **Prefix Matching**: Highest score for exact prefix matches
+    - **Infix Matching**: Partial word and substring matching
+    - **Proximity Boost**: Distance-based ranking enhancement
+    - **Category Boost**: Higher scores for category-specific matches
+    - **Popularity Signals**: Historical usage and rating-based ranking
+
+    ### Legacy Place Search & Geocoding
+    The API also maintains backward compatibility with existing place search:
+
+    #### Legacy Features
     - **External Integration**: MapTiler geocoding API
     - **Aggressive Caching**: 5-minute TTL for improved performance
     - **Smart Ranking**: Relevance-based result ordering
     - **Proximity Search**: Location-based result prioritization
-    - **Auto-complete**: Real-time search suggestions
 
-    #### Search Parameters
+    #### Legacy Parameters
     - **query**: Search term (min 2 characters)
     - **lat/lon**: Optional proximity coordinates
     - **radius**: Search radius in meters (default: 50km)
     - **limit**: Max results (1-50, default: 10)
-
-    #### Performance Benefits
-    - **Cache Hits**: Instant results for repeated searches
-    - **Reduced API Costs**: Fewer external geocoding calls
-    - **Better UX**: Immediate response for common searches
 
     ## 🛑 Stops Management
 
@@ -571,7 +640,7 @@ app.include_router(trips_router, prefix="/trips", tags=["trips"])
 app.include_router(routing_router, prefix="/routing", tags=["routing"])
 app.include_router(days_router, prefix="/trips/{trip_id}/days", tags=["days"])
 app.include_router(stops_router, prefix="/stops", tags=["stops"])
-app.include_router(places_router, prefix="/places", tags=["places"])
+app.include_router(places_router, prefix="/places", tags=["places", "places-typeahead"])
 app.include_router(settings_router, tags=["settings"])
 app.include_router(monitoring_router, prefix="/monitoring", tags=["monitoring"])
 app.include_router(enums_router, prefix="/enums", tags=["enums"])
