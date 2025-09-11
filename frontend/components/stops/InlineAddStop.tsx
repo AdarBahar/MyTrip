@@ -124,6 +124,8 @@ export default function InlineAddStop({ tripId, dayId, dayCenter, onAdded, onCan
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <input
+            id="stop-search-input"
+            name="stop-search"
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') runSearch(); }}
@@ -145,6 +147,8 @@ export default function InlineAddStop({ tripId, dayId, dayCenter, onAdded, onCan
       {picked && (
         <div className="flex items-center gap-2">
           <input
+            id="stop-custom-name"
+            name="stop-custom-name"
             value={customName}
             onChange={e => setCustomName(e.target.value.slice(0, 50))}
             placeholder="Add a custom name (optional, 50 chars)"

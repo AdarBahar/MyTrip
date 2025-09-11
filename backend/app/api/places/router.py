@@ -1,5 +1,5 @@
 """
-Places API router
+Places API router with Type-ahead Suggestions
 """
 from typing import Optional, List, Dict, Any, Set, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
@@ -23,7 +23,13 @@ from app.schemas.place import (
 from app.schemas.pagination import create_paginated_response, get_base_url
 from fastapi.encoders import jsonable_encoder
 
+# Import new type-ahead API
+from app.api.v1.places.endpoints import router as typeahead_router
+
 router = APIRouter()
+
+# Include type-ahead suggestions API (remove prefix since it's already in the router)
+router.include_router(typeahead_router)
 
 # Utilities for ETag generation
 import hashlib

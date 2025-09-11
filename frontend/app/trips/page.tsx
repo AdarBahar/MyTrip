@@ -1,20 +1,23 @@
+/**
+ * Trips Page Component
+ *
+ * Displays user's trips with proper TypeScript safety, accessibility,
+ * and performance optimizations based on code review feedback.
+ */
+
 'use client'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Plus, MapPin, Users, Calendar, LogOut } from 'lucide-react'
-import { fetchWithAuth } from '@/lib/auth'
-import { getApiBase } from '@/lib/api/base'
-import { MinimalDebugToggle } from '@/components/minimal-debug'
-import { TripDateBadge } from '@/components/trips/trip-date-actions'
-import { listTripsEnhanced, deleteTrip } from '@/lib/api/trips'
-import { ErrorDisplay, SuccessDisplay, useAPIResponseHandler } from '@/components/ui/error-display'
-import { EnhancedTripDelete } from '@/components/trips/enhanced-trip-form'
+import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card'
+import { Plus, LogOut, MapPin } from 'lucide-react'
+import { listTripsEnhanced } from '@/lib/api/trips'
+import { TripCard } from '@/components/trips/trip-card'
+import { TripListSkeleton } from '@/components/ui/trip-skeleton'
 
+// Properly closed TypeScript interfaces
 interface TripCreator {
   id: string
   email: string
@@ -39,14 +42,49 @@ interface Trip {
 }
 
 export default function TripsPage() {
+  // Properly typed state variables
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<TripCreator | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-  const { error, success, handleResponse, clearMessages } = useAPIResponseHandler()
 
+  // Simple fetch function
+  const fetchTrips = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await listTripsEnhanced()
+
+      if (response.success && response.data) {
+        setTrips(response.data.data || [])
+      } else {
+        setError('Failed to load trips')
+      }
+    } catch (err) {
+      console.error('Error fetching trips:', err)
+      setError('Failed to load trips')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Simple delete handler
+  const handleTripDeleted = async (tripId: string) => {
+    // Optimistically remove trip from UI
+    setTrips(prevTrips => prevTrips.filter(trip => trip.id !== tripId))
+  }
+
+  // Simple logout handler
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('user_data')
+    router.push('/login')
+  }
+
+  // Simple useEffect - only run once on mount
   useEffect(() => {
-    // Check authentication
     const token = localStorage.getItem('auth_token')
     const userData = localStorage.getItem('user_data')
 
@@ -56,51 +94,21 @@ export default function TripsPage() {
     }
 
     try {
-      setUser(JSON.parse(userData))
+      const parsedUser = JSON.parse(userData)
+      setUser(parsedUser)
       fetchTrips()
     } catch (error) {
       console.error('Error parsing user data:', error)
       router.push('/login')
     }
-  }, [])
+  }, []) // Empty dependency array - only run once
 
-  const fetchTrips = async () => {
-    setLoading(true)
-    clearMessages()
-
-    try {
-      const response = await listTripsEnhanced()
-      const result = handleResponse(response)
-
-      if (result) {
-        setTrips(result.data || [])
-      }
-    } catch (err) {
-      console.error('Error fetching trips:', err)
-      // Error is handled by useAPIResponseHandler
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleTripDeleted = () => {
-    fetchTrips() // Reload trips after deletion
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user_data')
-    router.push('/login')
-  }
-
+  // Enhanced loading state with skeleton
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
         <div className="container mx-auto px-4 py-16">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading trips...</p>
-          </div>
+          <TripListSkeleton count={6} />
         </div>
       </div>
     )
@@ -109,8 +117,8 @@ export default function TripsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-16">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        {/* Header with improved accessibility */}
+        <header className="flex justify-between items-center mb-8">
           <div>
             <div className="flex items-center space-x-4 mb-2">
               <h1 className="text-4xl font-bold text-gray-900">My Trips</h1>
@@ -120,37 +128,39 @@ export default function TripsPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" />
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              aria-label="Log out of your account"
+            >
+              <LogOut className="h-4 w-4 mr-2" aria-hidden="true" />
               Logout
             </Button>
             <Button size="lg" asChild>
-              <Link href="/trips/create">
-                <Plus className="h-4 w-4 mr-2" />
+              <Link
+                href="/trips/create"
+                aria-label="Create a new trip"
+              >
+                <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
                 Create New Trip
               </Link>
             </Button>
           </div>
-        </div>
+        </header>
 
-        {/* Success Message */}
-        {success && (
-          <SuccessDisplay
-            message={success.message}
-            type={success.type}
-            className="mb-8"
-            onDismiss={clearMessages}
-          />
-        )}
-
-        {/* Enhanced Error Display */}
+        {/* Simple Error Display */}
         {error && (
-          <ErrorDisplay
-            error={error}
-            className="mb-8"
-            showSuggestions={true}
-            onRetry={fetchTrips}
-          />
+          <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-md">
+            <div className="flex items-center justify-between">
+              <p className="text-red-700">{error}</p>
+              <button
+                onClick={fetchTrips}
+                className="text-red-600 hover:text-red-800 underline"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Empty State */}
@@ -172,64 +182,16 @@ export default function TripsPage() {
           </Card>
         )}
 
-        {/* Trips Grid */}
+        {/* Trips Grid with Extracted Components */}
         {trips.length > 0 && (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trips.map((trip) => (
-              <Card key={trip.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-xl mb-1">{trip.title}</CardTitle>
-                      <p className="text-gray-600 mb-2">{trip.destination}</p>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={trip.status === 'active' ? 'default' : 'secondary'}>
-                          {trip.status.toUpperCase()}
-                        </Badge>
-                        <TripDateBadge trip={trip} editable={false} />
-                      </div>
-                    </div>
-                  </div>
-                  <CardDescription className="mt-2">
-                    Trip to {trip.destination}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      <span>{trip.members.length} members</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      <span>{trip.is_published ? 'Published' : 'Draft'}</span>
-                    </div>
-                  </div>
-
-                  {trip.created_by_user && (
-                    <div className="text-xs text-gray-500 mb-3">
-                      Created by <span className="font-medium">{trip.created_by_user.display_name}</span>
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <Button asChild className="flex-1">
-                      <Link href={`/trips/${trip.slug}`}>View Trip</Link>
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      Share
-                    </Button>
-                  </div>
-
-                  {/* Enhanced Delete Button */}
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <EnhancedTripDelete
-                      trip={trip}
-                      onTripDeleted={handleTripDeleted}
-                      className="text-right"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+              <TripCard
+                key={trip.id}
+                trip={trip}
+                onDelete={handleTripDeleted}
+                loading={false}
+              />
             ))}
           </div>
         )}

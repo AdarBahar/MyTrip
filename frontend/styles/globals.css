@@ -1,3 +1,6 @@
+/* MapTiler SDK styles - must be imported first */
+@import url('https://cdn.maptiler.com/maptiler-sdk-js/v1.2.0/maptiler-sdk.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -99,9 +102,6 @@
     white-space: inherit;
   }
 }
-
-/* MapTiler SDK styles */
-@import url('https://cdn.maptiler.com/maptiler-sdk-js/v1.2.0/maptiler-sdk.css');
 
 /* Custom map styles */
 .map-container {

@@ -191,6 +191,8 @@ export default function AddStopModal({
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
                       type="text"
+                      id="place-search-input"
+                      name="place-search"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyPress={handleSearchKeyPress}
@@ -315,6 +317,8 @@ export default function AddStopModal({
                     Priority
                   </label>
                   <select
+                    id="stop-priority"
+                    name="stop-priority"
                     value={priority}
                     onChange={(e) => setPriority(parseInt(e.target.value) as StopPriority)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -390,6 +394,8 @@ export default function AddStopModal({
                     Notes
                   </label>
                   <textarea
+                    id="stop-notes"
+                    name="stop-notes"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Any additional notes about this stop..."

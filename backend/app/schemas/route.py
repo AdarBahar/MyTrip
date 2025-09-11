@@ -125,3 +125,40 @@ class BulkDayRouteSummaryRequest(BaseModel):
 
 class BulkDayRouteSummaryResponse(BaseModel):
     summaries: List[DayRouteActiveSummary]
+
+
+class DayRouteBreakdownRequest(BaseModel):
+    """Request for detailed day route breakdown"""
+
+    trip_id: str
+    day_id: str
+    start: RoutePoint = Field(..., description="Starting point of the day")
+    stops: List[RoutePoint] = Field(..., description="Ordered list of stops to visit")
+    end: RoutePoint = Field(..., description="Ending point of the day")
+    profile: str = Field(default="car", pattern="^(car|motorcycle|bike)$")
+    options: Optional[RouteOptions] = None
+
+
+class RouteSegment(BaseModel):
+    """Individual route segment between two points"""
+
+    from_point: RoutePoint = Field(..., description="Starting point of this segment")
+    to_point: RoutePoint = Field(..., description="Ending point of this segment")
+    distance_km: float = Field(..., description="Distance in kilometers")
+    duration_min: float = Field(..., description="Duration in minutes")
+    geometry: Dict[str, Any] = Field(..., description="GeoJSON LineString geometry")
+    instructions: List[Dict[str, Any]] = Field(..., description="Turn-by-turn instructions")
+    segment_type: str = Field(..., description="Type: start_to_stop, stop_to_stop, or stop_to_end")
+    segment_index: int = Field(..., description="Order index of this segment")
+
+
+class DayRouteBreakdownResponse(BaseModel):
+    """Detailed breakdown of a day's route"""
+
+    trip_id: str
+    day_id: str
+    total_distance_km: float = Field(..., description="Total distance for the entire day")
+    total_duration_min: float = Field(..., description="Total duration for the entire day")
+    segments: List[RouteSegment] = Field(..., description="Individual route segments")
+    summary: Dict[str, Any] = Field(..., description="Additional summary information")
+    computed_at: datetime = Field(..., description="When this breakdown was computed")
