@@ -128,7 +128,7 @@ class BulkDayRouteSummaryResponse(BaseModel):
 
 
 class DayRouteBreakdownRequest(BaseModel):
-    """Request for detailed day route breakdown"""
+    """Request for detailed day route breakdown with optimization support"""
 
     trip_id: str
     day_id: str
@@ -136,6 +136,14 @@ class DayRouteBreakdownRequest(BaseModel):
     stops: List[RoutePoint] = Field(..., description="Ordered list of stops to visit")
     end: RoutePoint = Field(..., description="Ending point of the day")
     profile: str = Field(default="car", pattern="^(car|motorcycle|bike)$")
+    optimize: bool = Field(
+        default=False,
+        description="Optimize stop order between start and end points"
+    )
+    fixed_stop_indices: Optional[List[int]] = Field(
+        default=None,
+        description="Indices of stops that cannot be reordered (0-based)"
+    )
     options: Optional[RouteOptions] = None
 
 
@@ -153,12 +161,20 @@ class RouteSegment(BaseModel):
 
 
 class DayRouteBreakdownResponse(BaseModel):
-    """Detailed breakdown of a day's route"""
+    """Detailed breakdown of a day's route with optimization results"""
 
     trip_id: str
     day_id: str
     total_distance_km: float = Field(..., description="Total distance for the entire day")
     total_duration_min: float = Field(..., description="Total duration for the entire day")
     segments: List[RouteSegment] = Field(..., description="Individual route segments")
+    optimized_order: Optional[List[RoutePoint]] = Field(
+        default=None,
+        description="Optimized order of all points (start + stops + end) if optimization was requested"
+    )
+    optimization_savings: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Savings from optimization: distance_km_saved, duration_min_saved"
+    )
     summary: Dict[str, Any] = Field(..., description="Additional summary information")
     computed_at: datetime = Field(..., description="When this breakdown was computed")

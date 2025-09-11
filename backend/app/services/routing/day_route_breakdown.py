@@ -6,13 +6,26 @@ Provides detailed segment-by-segment routing for a complete day's journey.
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from app.services.routing.base import RoutePoint, RoutingProvider
+from app.services.routing.base import RoutePoint, RoutingProvider, DistanceMatrix
 from app.services.routing import get_routing_provider
 from app.schemas.route import (
     DayRouteBreakdownRequest,
     DayRouteBreakdownResponse,
     RouteSegment
 )
+from app.core.config import settings
+
+# Simple haversine distance in kilometers
+from math import radians, sin, cos, sqrt, atan2
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371.0
+    phi1, phi2 = radians(lat1), radians(lat2)
+    dphi = radians(lat2 - lat1)
+    dlambda = radians(lon2 - lon1)
+    a = sin(dphi/2)**2 + cos(phi1) * cos(phi2) * sin(dlambda/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
 
 logger = logging.getLogger(__name__)
 
@@ -24,25 +37,43 @@ class DayRouteBreakdownService:
         self.routing_provider: RoutingProvider = get_routing_provider()
     
     async def compute_day_breakdown(
-        self, 
+        self,
         request: DayRouteBreakdownRequest
     ) -> DayRouteBreakdownResponse:
         """
-        Compute detailed route breakdown for a complete day
-        
+        Compute detailed route breakdown for a complete day with optional optimization
+
         Args:
             request: Day route breakdown request with start, stops, and end
-            
+
         Returns:
             Detailed breakdown with segment-by-segment routing information
         """
-        logger.info(f"Computing day route breakdown for day {request.day_id}")
-        
+        logger.info(f"Computing day route breakdown for day {request.day_id}, optimize={request.optimize}")
+
         # Build the complete journey points
-        journey_points = [request.start] + request.stops + [request.end]
-        
-        if len(journey_points) < 2:
+        original_points = [request.start] + request.stops + [request.end]
+
+        if len(original_points) < 2:
             raise ValueError("At least start and end points are required")
+
+        # Optimize stop order if requested
+        optimized_points = original_points
+        optimization_savings = None
+
+        if request.optimize and len(request.stops) > 1:
+            logger.info("Optimizing stop order...")
+            optimized_points, optimization_savings = await self._optimize_stop_order(
+                start=request.start,
+                stops=request.stops,
+                end=request.end,
+                fixed_indices=request.fixed_stop_indices or [],
+                profile=request.profile,
+                options=request.options
+            )
+            logger.info(f"Optimization complete. Savings: {optimization_savings}")
+
+        journey_points = optimized_points
         
         # Compute individual segments
         segments = []
@@ -113,6 +144,8 @@ class DayRouteBreakdownService:
             total_distance_km=total_distance_km,
             total_duration_min=total_duration_min,
             segments=segments,
+            optimized_order=optimized_points if request.optimize else None,
+            optimization_savings=optimization_savings,
             summary=summary,
             computed_at=datetime.utcnow()
         )
@@ -217,6 +250,224 @@ class DayRouteBreakdownService:
             "from": shortest.from_point.name or f"Point {shortest.segment_index}",
             "to": shortest.to_point.name or f"Point {shortest.segment_index + 1}"
         }
+
+    async def _optimize_stop_order(
+        self,
+        start: RoutePoint,
+        stops: List[RoutePoint],
+        end: RoutePoint,
+        fixed_indices: List[int],
+        profile: str,
+        options: Optional[Dict[str, Any]] = None
+    ) -> tuple[List[RoutePoint], Optional[Dict[str, float]]]:
+        """
+        Optimize the order of stops between start and end points
+
+        Args:
+            start: Starting point (fixed)
+            stops: List of stops to optimize
+            end: Ending point (fixed)
+            fixed_indices: Indices of stops that cannot be moved (0-based)
+            profile: Routing profile
+            options: Routing options
+
+        Returns:
+            Tuple of (optimized_points_list, optimization_savings)
+        """
+        if len(stops) <= 1:
+            return [start] + stops + [end], None
+
+        # Separate fixed and movable stops
+        fixed_stops = []
+        movable_stops = []
+
+        for i, stop in enumerate(stops):
+            if i in fixed_indices:
+                fixed_stops.append((i, stop))
+            else:
+                movable_stops.append(stop)
+
+        if not movable_stops:
+            # All stops are fixed, no optimization possible
+            return [start] + stops + [end], None
+
+        # Calculate original route distance/duration for comparison
+        original_points = [start] + stops + [end]
+        original_distance, original_duration = await self._calculate_total_route_metrics(
+            original_points, profile, options
+        )
+
+        # If no fixed stops, optimize all movable stops between start and end
+        if not fixed_stops:
+            optimized_stops = await self._optimize_segment(
+                start, movable_stops, end, profile, options
+            )
+            optimized_points = [start] + optimized_stops + [end]
+        else:
+            # Complex optimization with fixed anchors
+            optimized_points = await self._optimize_with_fixed_anchors(
+                start, stops, end, fixed_indices, profile, options
+            )
+
+        # Calculate optimized route metrics
+        optimized_distance, optimized_duration = await self._calculate_total_route_metrics(
+            optimized_points, profile, options
+        )
+
+        # Calculate savings
+        distance_saved = original_distance - optimized_distance
+        duration_saved = original_duration - optimized_duration
+
+        optimization_savings = {
+            "distance_km_saved": distance_saved,
+            "duration_min_saved": duration_saved,
+            "distance_improvement_percent": (distance_saved / original_distance * 100) if original_distance > 0 else 0,
+            "duration_improvement_percent": (duration_saved / original_duration * 100) if original_duration > 0 else 0
+        }
+
+        logger.info(
+            f"Route optimization: {distance_saved:.2f}km saved ({optimization_savings['distance_improvement_percent']:.1f}%), "
+            f"{duration_saved:.1f}min saved ({optimization_savings['duration_improvement_percent']:.1f}%)"
+        )
+
+        return optimized_points, optimization_savings
+
+    async def _optimize_segment(
+        self,
+        seg_start: RoutePoint,
+        candidates: List[RoutePoint],
+        seg_end: RoutePoint,
+        profile: str,
+        options: Optional[Dict[str, Any]] = None
+    ) -> List[RoutePoint]:
+        """
+        Optimize order of stops between two fixed points using nearest neighbor algorithm
+        """
+        if not candidates:
+            return []
+
+        if len(candidates) == 1:
+            return candidates
+
+        # Use distance matrix if available and efficient
+        try:
+            # Build points for matrix: [seg_start, candidates..., seg_end]
+            matrix_points = [seg_start] + candidates + [seg_end]
+            matrix = await self.routing_provider.compute_matrix(
+                matrix_points, profile=profile, options=options
+            )
+
+            # Validate matrix
+            n = len(candidates)
+            if not matrix.durations_min or len(matrix.durations_min) != n + 2:
+                raise ValueError("Invalid matrix dimensions")
+
+            # Build nearest neighbor over matrix (indexes: 0 is start, 1..n are candidates, n+1 is end)
+            remaining = list(range(1, n + 1))
+            order_idx: List[int] = []
+            cur = 0  # Start from seg_start
+
+            while remaining:
+                nxt_rel = min(remaining, key=lambda i: matrix.durations_min[cur][i])
+                order_idx.append(nxt_rel)
+                remaining.remove(nxt_rel)
+                cur = nxt_rel
+
+            return [candidates[i - 1] for i in order_idx]
+
+        except Exception as e:
+            logger.warning(f"Matrix optimization failed: {e}; falling back to greedy nearest neighbor")
+
+            # Fallback to simple distance-based nearest neighbor
+            def dist(a: RoutePoint, b: RoutePoint) -> float:
+                return haversine_km(a.lat, a.lon, b.lat, b.lon)
+
+            remaining = candidates[:]
+            ordered = []
+            cur = seg_start
+
+            while remaining:
+                nxt = min(remaining, key=lambda s: dist(cur, s))
+                ordered.append(nxt)
+                remaining.remove(nxt)
+                cur = nxt
+
+            return ordered
+
+    async def _optimize_with_fixed_anchors(
+        self,
+        start: RoutePoint,
+        stops: List[RoutePoint],
+        end: RoutePoint,
+        fixed_indices: List[int],
+        profile: str,
+        options: Optional[Dict[str, Any]] = None
+    ) -> List[RoutePoint]:
+        """
+        Optimize stops with some fixed in place as anchors
+        """
+        # Separate fixed and movable stops
+        fixed_stops = [(i, stops[i]) for i in fixed_indices]
+        movable_stops = [stops[i] for i in range(len(stops)) if i not in fixed_indices]
+
+        # Create anchors list: start + fixed_stops (sorted by index) + end
+        anchors = [start] + [stop for _, stop in sorted(fixed_stops)] + [end]
+
+        # Optimize movable stops between each pair of anchors
+        optimized_order = []
+        remaining_movable = list(movable_stops)
+
+        for i in range(len(anchors) - 1):
+            anchor_start = anchors[i]
+            anchor_end = anchors[i + 1]
+
+            if not optimized_order:
+                optimized_order.append(anchor_start)
+
+            if remaining_movable:
+                # Optimize movable stops between these anchors
+                segment_optimized = await self._optimize_segment(
+                    anchor_start, remaining_movable, anchor_end, profile, options
+                )
+                optimized_order.extend(segment_optimized)
+                remaining_movable = []  # All movable stops assigned
+
+            optimized_order.append(anchor_end)
+
+        return optimized_order
+
+    async def _calculate_total_route_metrics(
+        self,
+        points: List[RoutePoint],
+        profile: str,
+        options: Optional[Dict[str, Any]] = None
+    ) -> tuple[float, float]:
+        """
+        Calculate total distance and duration for a route
+        """
+        if len(points) < 2:
+            return 0.0, 0.0
+
+        total_distance = 0.0
+        total_duration = 0.0
+
+        for i in range(len(points) - 1):
+            try:
+                segment_route = await self.routing_provider.compute_route(
+                    points=[points[i], points[i + 1]],
+                    profile=profile,
+                    options=options
+                )
+                total_distance += segment_route.total_km
+                total_duration += segment_route.total_min
+            except Exception as e:
+                logger.warning(f"Failed to compute segment {i}-{i+1}: {e}")
+                # Fallback to straight-line distance estimation
+                dist_km = haversine_km(points[i].lat, points[i].lon, points[i + 1].lat, points[i + 1].lon)
+                total_distance += dist_km
+                total_duration += dist_km * 2  # Rough estimate: 30 km/h average
+
+        return total_distance, total_duration
 
 
 # Global service instance
