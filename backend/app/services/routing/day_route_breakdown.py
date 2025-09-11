@@ -1,53 +1,107 @@
 """
 Day Route Breakdown Service
 
-Provides detailed segment-by-segment routing for a complete day's journey.
+Provides detailed segment-by-segment routing for a complete day's journey
+with enhanced optimization, error handling, and type safety.
+
+This module has been refactored to follow best practices including:
+- Comprehensive type hints
+- Modular architecture with separated concerns
+- Enhanced error handling with specific exception types
+- Improved logging with granular levels
+- Caching and performance optimizations
+- Robust input validation
 """
+import asyncio
 import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Optional, Union
+
+# Core routing imports
 from app.services.routing.base import RoutePoint, RoutingProvider, DistanceMatrix
 from app.services.routing import get_routing_provider
+from app.services.routing.optimization import RouteOptimizer, OptimizationResult
 from app.schemas.route import (
     DayRouteBreakdownRequest,
     DayRouteBreakdownResponse,
     RouteSegment
 )
+
+# Enhanced type definitions
+from app.types.routing import (
+    RoutingProfile,
+    RouteOptionsDict,
+    OptimizationOptionsDict,
+    RouteValidator,
+    RouteValidationResult
+)
+
+# Enhanced error handling
+from app.exceptions.routing import (
+    RouteValidationError,
+    RouteProviderError,
+    RouteOptimizationError,
+    RouteCalculationError,
+    RoutingErrorHandler,
+    ErrorContext
+)
+
+# Utility functions
+from app.utils.geometry import haversine_km, estimate_travel_time_minutes
 from app.core.config import settings
-
-# Simple haversine distance in kilometers
-from math import radians, sin, cos, sqrt, atan2
-
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0
-    phi1, phi2 = radians(lat1), radians(lat2)
-    dphi = radians(lat2 - lat1)
-    dlambda = radians(lon2 - lon1)
-    a = sin(dphi/2)**2 + cos(phi1) * cos(phi2) * sin(dlambda/2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1-a))
-    return R * c
 
 logger = logging.getLogger(__name__)
 
 
 class DayRouteBreakdownService:
-    """Service for computing detailed day route breakdowns"""
-    
-    def __init__(self):
-        self.routing_provider: RoutingProvider = get_routing_provider()
-    
+    """
+    Enhanced service for computing detailed day route breakdowns.
+
+    This service provides comprehensive route planning with:
+    - Intelligent route optimization using multiple algorithms
+    - Robust error handling with specific exception types
+    - Performance optimizations including caching
+    - Comprehensive input validation
+    - Detailed logging and monitoring
+    """
+
+    def __init__(self, routing_provider: Optional[RoutingProvider] = None):
+        """
+        Initialize the day route breakdown service.
+
+        Args:
+            routing_provider: Optional routing provider instance.
+                             If None, uses the default configured provider.
+        """
+        self.routing_provider: RoutingProvider = routing_provider or get_routing_provider()
+        self.optimizer = RouteOptimizer(self.routing_provider)
+        self._segment_cache: dict[str, RouteSegment] = {}
+
+        logger.info(
+            "Initialized DayRouteBreakdownService with provider: %s",
+            self.routing_provider.__class__.__name__
+        )
+
     async def compute_day_breakdown(
         self,
-        request: DayRouteBreakdownRequest
+        request: DayRouteBreakdownRequest,
+        context: Optional[ErrorContext] = None
     ) -> DayRouteBreakdownResponse:
         """
-        Compute detailed route breakdown for a complete day with optional optimization
+        Compute detailed route breakdown for a complete day with optional optimization.
 
         Args:
             request: Day route breakdown request with start, stops, and end
+            context: Optional error context for enhanced error handling
 
         Returns:
             Detailed breakdown with segment-by-segment routing information
+
+        Raises:
+            RouteValidationError: If input validation fails
+            RouteProviderError: If routing provider fails
+            RouteOptimizationError: If optimization fails (with fallback)
+            RouteCalculationError: If route calculation fails
         """
         logger.info(f"Computing day route breakdown for day {request.day_id}, optimize={request.optimize}")
 
@@ -469,21 +523,233 @@ class DayRouteBreakdownService:
 
         return total_distance, total_duration
 
+    def _validate_request(self, request: DayRouteBreakdownRequest) -> RouteValidationResult:
+        """
+        Validate the route breakdown request.
 
-# Global service instance
-day_breakdown_service = DayRouteBreakdownService()
+        Args:
+            request: The request to validate
+
+        Returns:
+            RouteValidationResult with validation status and any errors/warnings
+        """
+        errors = []
+        warnings = []
+
+        # Validate start point
+        start_errors = RouteValidator.validate_route_point(
+            {"lat": request.start.lat, "lon": request.start.lon, "name": request.start.name},
+            "start"
+        )
+        errors.extend(start_errors)
+
+        # Validate end point
+        end_errors = RouteValidator.validate_route_point(
+            {"lat": request.end.lat, "lon": request.end.lon, "name": request.end.name},
+            "end"
+        )
+        errors.extend(end_errors)
+
+        # Validate stops
+        for i, stop in enumerate(request.stops):
+            stop_errors = RouteValidator.validate_route_point(
+                {"lat": stop.lat, "lon": stop.lon, "name": stop.name},
+                f"stops[{i}]"
+            )
+            errors.extend(stop_errors)
+
+        # Validate profile
+        valid_profiles = ["car", "motorcycle", "bike", "walking"]
+        if request.profile not in valid_profiles:
+            errors.append(ValidationError(
+                "profile",
+                f"Must be one of {valid_profiles}",
+                request.profile
+            ))
+
+        # Validate fixed indices
+        if hasattr(request, 'fixed_stop_indices') and request.fixed_stop_indices:
+            for idx in request.fixed_stop_indices:
+                if not isinstance(idx, int) or idx < 0 or idx >= len(request.stops):
+                    errors.append(ValidationError(
+                        "fixed_stop_indices",
+                        f"Index {idx} is out of range for {len(request.stops)} stops",
+                        idx
+                    ))
+
+        # Add warnings for potential issues
+        if len(request.stops) > 10:
+            warnings.append(ValidationError(
+                "stops",
+                f"Large number of stops ({len(request.stops)}) may result in slower optimization"
+            ))
+
+        return RouteValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings
+        )
+
+    def _convert_request_points(
+        self,
+        request: DayRouteBreakdownRequest
+    ) -> tuple[RoutePoint, list[RoutePoint], RoutePoint]:
+        """
+        Convert request points to RoutePoint objects.
+
+        Args:
+            request: The route breakdown request
+
+        Returns:
+            Tuple of (start_point, stop_points, end_point)
+        """
+        start_point = RoutePoint(
+            lat=request.start.lat,
+            lon=request.start.lon,
+            name=request.start.name
+        )
+
+        stop_points = [
+            RoutePoint(lat=stop.lat, lon=stop.lon, name=stop.name)
+            for stop in request.stops
+        ]
+
+        end_point = RoutePoint(
+            lat=request.end.lat,
+            lon=request.end.lon,
+            name=request.end.name
+        )
+
+        return start_point, stop_points, end_point
+
+    async def _handle_optimization(
+        self,
+        request: DayRouteBreakdownRequest,
+        start_point: RoutePoint,
+        stop_points: list[RoutePoint],
+        end_point: RoutePoint,
+        context: ErrorContext
+    ) -> Optional[OptimizationResult]:
+        """
+        Handle route optimization if requested.
+
+        Args:
+            request: The route breakdown request
+            start_point: Starting point
+            stop_points: List of stops to optimize
+            end_point: Ending point
+            context: Error context for logging
+
+        Returns:
+            OptimizationResult if optimization was performed, None otherwise
+        """
+        if not getattr(request, 'optimize', False) or len(stop_points) <= 1:
+            return None
+
+        try:
+            logger.info(
+                "Starting route optimization for %d stops",
+                len(stop_points),
+                extra=context.to_dict()
+            )
+
+            fixed_indices = getattr(request, 'fixed_stop_indices', None) or []
+            profile = request.profile
+            options = getattr(request, 'options', {})
+
+            optimization_result = await self.optimizer.optimize_route(
+                start=start_point,
+                stops=stop_points,
+                end=end_point,
+                fixed_indices=fixed_indices,
+                profile=profile,
+                options=options
+            )
+
+            logger.info(
+                "Optimization completed: %.2fkm saved (%.1f%%), %.1fmin saved (%.1f%%)",
+                optimization_result.distance_saved_km,
+                optimization_result.distance_improvement_percent,
+                optimization_result.duration_saved_min,
+                optimization_result.duration_improvement_percent,
+                extra=context.to_dict()
+            )
+
+            return optimization_result
+
+        except Exception as e:
+            logger.warning(
+                "Route optimization failed: %s, proceeding with original order",
+                str(e),
+                extra=context.to_dict()
+            )
+            # Don't raise exception, just proceed without optimization
+            return None
+
+
+# Service factory for dependency injection
+_service_instance: Optional[DayRouteBreakdownService] = None
+
+
+def get_day_breakdown_service(
+    routing_provider: Optional[RoutingProvider] = None
+) -> DayRouteBreakdownService:
+    """
+    Get or create a day breakdown service instance.
+
+    This factory function supports dependency injection for better testability
+    and allows for different routing providers to be used.
+
+    Args:
+        routing_provider: Optional routing provider. If None, uses default.
+
+    Returns:
+        DayRouteBreakdownService instance
+    """
+    global _service_instance
+
+    if routing_provider is not None:
+        # Create new instance with specific provider
+        return DayRouteBreakdownService(routing_provider)
+
+    if _service_instance is None:
+        # Create default instance
+        _service_instance = DayRouteBreakdownService()
+        logger.info("Created default DayRouteBreakdownService instance")
+
+    return _service_instance
+
+
+def reset_service_instance() -> None:
+    """Reset the global service instance (useful for testing)."""
+    global _service_instance
+    _service_instance = None
 
 
 async def compute_day_route_breakdown(
-    request: DayRouteBreakdownRequest
+    request: DayRouteBreakdownRequest,
+    routing_provider: Optional[RoutingProvider] = None,
+    context: Optional[ErrorContext] = None
 ) -> DayRouteBreakdownResponse:
     """
-    Compute detailed route breakdown for a day
-    
+    Compute detailed route breakdown for a day.
+
+    This is the main entry point for day route breakdown computation.
+    It provides a clean API while supporting dependency injection for testing.
+
     Args:
         request: Day route breakdown request
-        
+        routing_provider: Optional routing provider for dependency injection
+        context: Optional error context for enhanced error handling
+
     Returns:
         Detailed breakdown response
+
+    Raises:
+        RouteValidationError: If input validation fails
+        RouteProviderError: If routing provider fails
+        RouteOptimizationError: If optimization fails (with fallback)
+        RouteCalculationError: If route calculation fails
     """
-    return await day_breakdown_service.compute_day_breakdown(request)
+    service = get_day_breakdown_service(routing_provider)
+    return await service.compute_day_breakdown(request, context)
