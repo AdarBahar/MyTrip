@@ -20,7 +20,7 @@ from typing import Optional, Union, Dict, Any, List
 # Core routing imports
 from app.services.routing.base import RoutePoint, RoutingProvider, DistanceMatrix
 from app.services.routing import get_routing_provider
-from app.services.routing.optimization import RouteOptimizer, OptimizationResult
+from app.services.routing.optimization import RouteOptimizer, OptimizationResult, OptimizationStrategy
 from app.schemas.route import (
     DayRouteBreakdownRequest,
     DayRouteBreakdownResponse,
@@ -657,12 +657,16 @@ class DayRouteBreakdownService:
             profile = request.profile
             options = getattr(request, 'options', {})
 
+            # Determine optimization strategy
+            strategy = self._get_optimization_strategy(request, len(stop_points))
+
             optimization_result = await self.optimizer.optimize_route(
                 start=start_point,
                 stops=stop_points,
                 end=end_point,
                 fixed_indices=fixed_indices,
                 profile=profile,
+                strategy=strategy,
                 options=options
             )
 
@@ -685,6 +689,41 @@ class DayRouteBreakdownService:
             )
             # Don't raise exception, just proceed without optimization
             return None
+
+    def _get_optimization_strategy(
+        self,
+        request: DayRouteBreakdownRequest,
+        num_stops: int
+    ) -> OptimizationStrategy:
+        """
+        Determine the best optimization strategy based on request and problem size.
+
+        Args:
+            request: Route breakdown request
+            num_stops: Number of stops to optimize
+
+        Returns:
+            OptimizationStrategy to use
+        """
+        # Check if user specified a strategy in options
+        options = getattr(request, 'options', {})
+        if 'optimization_strategy' in options:
+            strategy_name = options['optimization_strategy']
+            try:
+                return OptimizationStrategy(strategy_name)
+            except ValueError:
+                logger.warning(f"Invalid optimization strategy: {strategy_name}, using default")
+
+        # Auto-select strategy based on problem characteristics
+        if num_stops <= 2:
+            # Small problems: matrix-based is sufficient
+            return OptimizationStrategy.MATRIX_BASED
+        elif num_stops <= 8:
+            # Medium problems: try VRP first, fallback to matrix
+            return OptimizationStrategy.VRP_FULL
+        else:
+            # Large problems: VRP is most beneficial
+            return OptimizationStrategy.VRP_FULL
 
 
 # Service factory for dependency injection

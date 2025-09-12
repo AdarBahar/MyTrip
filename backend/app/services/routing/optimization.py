@@ -2,17 +2,26 @@
 Route optimization algorithms and utilities.
 
 This module provides various algorithms for optimizing route order,
-including nearest neighbor heuristics and TSP-based approaches.
+including GraphHopper VRP, nearest neighbor heuristics, and best insertion.
 """
 import asyncio
 import logging
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 from dataclasses import dataclass
+from enum import Enum
 
 from app.services.routing.base import RoutePoint, RoutingProvider, DistanceMatrix
 from app.utils.geometry import haversine_km, estimate_travel_time_minutes
 
 logger = logging.getLogger(__name__)
+
+
+class OptimizationStrategy(Enum):
+    """Available optimization strategies."""
+    VRP_FULL = "vrp_full"  # GraphHopper VRP API (best quality)
+    MATRIX_BASED = "matrix_based"  # Matrix + nearest neighbor (good fallback)
+    BEST_INSERTION = "best_insertion"  # Fast insertion for single stops
+    NEAREST_NEIGHBOR = "nearest_neighbor"  # Simple greedy (fastest fallback)
 
 
 @dataclass
@@ -51,21 +60,28 @@ class OptimizationResult:
 
 class RouteOptimizer:
     """
-    Route optimization service using various algorithms.
-    
-    Provides multiple optimization strategies including nearest neighbor
-    heuristics and more sophisticated TSP-based approaches.
+    Hybrid route optimization service using multiple algorithms.
+
+    Provides multiple optimization strategies:
+    - GraphHopper VRP API for best quality optimization
+    - Matrix-based nearest neighbor for good fallback
+    - Best insertion for fast interactive optimization
+    - Simple nearest neighbor for fastest fallback
     """
-    
+
     def __init__(self, routing_provider: RoutingProvider):
         """
         Initialize the route optimizer.
-        
+
         Args:
             routing_provider: Routing provider for distance/duration calculations
         """
         self.routing_provider = routing_provider
         self._route_cache: dict[str, tuple[float, float]] = {}
+
+        # Initialize sub-optimizers (lazy loading)
+        self._vrp_provider = None
+        self._best_insertion_optimizer = None
     
     async def optimize_route(
         self,
@@ -74,19 +90,21 @@ class RouteOptimizer:
         end: RoutePoint,
         fixed_indices: Optional[list[int]] = None,
         profile: str = "car",
+        strategy: OptimizationStrategy = OptimizationStrategy.VRP_FULL,
         options: Optional[dict] = None
     ) -> OptimizationResult:
         """
-        Optimize route order for minimum distance/time.
-        
+        Optimize route order for minimum distance/time using hybrid approach.
+
         Args:
             start: Starting point (fixed)
             stops: List of stops to optimize
             end: Ending point (fixed)
             fixed_indices: Indices of stops that cannot be moved (0-based)
             profile: Routing profile
+            strategy: Optimization strategy to use
             options: Additional routing options
-            
+
         Returns:
             OptimizationResult with optimized order and metrics
         """
@@ -103,37 +121,43 @@ class RouteOptimizer:
                 original_duration_min=duration,
                 optimized_duration_min=duration
             )
-        
-        # Calculate original route metrics
+
+        # Try optimization strategies in order of preference
+        strategies_to_try = self._get_optimization_strategies(strategy, len(stops))
+
+        for current_strategy in strategies_to_try:
+            try:
+                logger.info(f"Attempting optimization with strategy: {current_strategy.value}")
+
+                if current_strategy == OptimizationStrategy.VRP_FULL:
+                    return await self._optimize_with_vrp(
+                        start, stops, end, fixed_indices, profile, options
+                    )
+                elif current_strategy == OptimizationStrategy.MATRIX_BASED:
+                    return await self._optimize_with_matrix(
+                        start, stops, end, fixed_indices, profile, options
+                    )
+                elif current_strategy == OptimizationStrategy.NEAREST_NEIGHBOR:
+                    return await self._optimize_with_nearest_neighbor(
+                        start, stops, end, fixed_indices, profile, options
+                    )
+
+            except Exception as e:
+                logger.warning(f"Optimization strategy {current_strategy.value} failed: {e}")
+                continue
+
+        # If all strategies fail, return original order
+        logger.error("All optimization strategies failed, returning original order")
         original_points = [start] + stops + [end]
-        original_distance, original_duration = await self._calculate_route_metrics(
+        distance, duration = await self._calculate_route_metrics(
             original_points, profile, options
         )
-        
-        # Perform optimization
-        if not fixed_indices:
-            # Simple case: optimize all stops
-            optimized_stops = await self._optimize_segment(
-                start, stops, end, profile, options
-            )
-            optimized_points = [start] + optimized_stops + [end]
-        else:
-            # Complex case: optimize around fixed stops
-            optimized_points = await self._optimize_with_fixed_anchors(
-                start, stops, end, fixed_indices, profile, options
-            )
-        
-        # Calculate optimized route metrics
-        optimized_distance, optimized_duration = await self._calculate_route_metrics(
-            optimized_points, profile, options
-        )
-        
         return OptimizationResult(
-            optimized_points=optimized_points,
-            original_distance_km=original_distance,
-            optimized_distance_km=optimized_distance,
-            original_duration_min=original_duration,
-            optimized_duration_min=optimized_duration
+            optimized_points=original_points,
+            original_distance_km=distance,
+            optimized_distance_km=distance,
+            original_duration_min=duration,
+            optimized_duration_min=duration
         )
     
     async def _optimize_segment(
@@ -218,6 +242,141 @@ class RouteOptimizer:
             current = nearest
         
         return ordered
+
+    def _get_optimization_strategies(
+        self,
+        preferred_strategy: OptimizationStrategy,
+        num_stops: int
+    ) -> list[OptimizationStrategy]:
+        """
+        Get list of optimization strategies to try in order of preference.
+
+        Args:
+            preferred_strategy: User's preferred strategy
+            num_stops: Number of stops to optimize
+
+        Returns:
+            List of strategies to try in order
+        """
+        # For small problems, VRP might be overkill
+        if num_stops <= 3:
+            return [
+                OptimizationStrategy.MATRIX_BASED,
+                OptimizationStrategy.NEAREST_NEIGHBOR
+            ]
+
+        # For larger problems, try VRP first, then fallbacks
+        if preferred_strategy == OptimizationStrategy.VRP_FULL:
+            return [
+                OptimizationStrategy.VRP_FULL,
+                OptimizationStrategy.MATRIX_BASED,
+                OptimizationStrategy.NEAREST_NEIGHBOR
+            ]
+        elif preferred_strategy == OptimizationStrategy.MATRIX_BASED:
+            return [
+                OptimizationStrategy.MATRIX_BASED,
+                OptimizationStrategy.NEAREST_NEIGHBOR
+            ]
+        else:
+            return [preferred_strategy, OptimizationStrategy.NEAREST_NEIGHBOR]
+
+    async def _optimize_with_vrp(
+        self,
+        start: RoutePoint,
+        stops: list[RoutePoint],
+        end: RoutePoint,
+        fixed_indices: Optional[list[int]],
+        profile: str,
+        options: Optional[dict]
+    ) -> OptimizationResult:
+        """Optimize using GraphHopper VRP API."""
+        if self._vrp_provider is None:
+            from app.services.routing.graphhopper_vrp import GraphHopperVRPProvider
+            self._vrp_provider = GraphHopperVRPProvider()
+
+        return await self._vrp_provider.optimize_route_vrp(
+            start, stops, end, profile, fixed_indices, options
+        )
+
+    async def _optimize_with_matrix(
+        self,
+        start: RoutePoint,
+        stops: list[RoutePoint],
+        end: RoutePoint,
+        fixed_indices: Optional[list[int]],
+        profile: str,
+        options: Optional[dict]
+    ) -> OptimizationResult:
+        """Optimize using matrix-based approach (existing implementation)."""
+        # Calculate original route metrics
+        original_points = [start] + stops + [end]
+        original_distance, original_duration = await self._calculate_route_metrics(
+            original_points, profile, options
+        )
+
+        # Perform optimization
+        if not fixed_indices:
+            # Simple case: optimize all stops
+            optimized_stops = await self._optimize_segment(
+                start, stops, end, profile, options
+            )
+            optimized_points = [start] + optimized_stops + [end]
+        else:
+            # Complex case: optimize around fixed stops
+            optimized_points = await self._optimize_with_fixed_anchors(
+                start, stops, end, fixed_indices, profile, options
+            )
+
+        # Calculate optimized route metrics
+        optimized_distance, optimized_duration = await self._calculate_route_metrics(
+            optimized_points, profile, options
+        )
+
+        return OptimizationResult(
+            optimized_points=optimized_points,
+            original_distance_km=original_distance,
+            optimized_distance_km=optimized_distance,
+            original_duration_min=original_duration,
+            optimized_duration_min=optimized_duration
+        )
+
+    async def _optimize_with_nearest_neighbor(
+        self,
+        start: RoutePoint,
+        stops: list[RoutePoint],
+        end: RoutePoint,
+        fixed_indices: Optional[list[int]],
+        profile: str,
+        options: Optional[dict]
+    ) -> OptimizationResult:
+        """Optimize using simple nearest neighbor (fastest fallback)."""
+        # Calculate original route metrics
+        original_points = [start] + stops + [end]
+        original_distance, original_duration = await self._calculate_route_metrics(
+            original_points, profile, options
+        )
+
+        # Simple nearest neighbor optimization
+        if fixed_indices:
+            # If there are fixed indices, just return original order
+            optimized_points = original_points
+        else:
+            # Use greedy nearest neighbor
+            optimized_stops = self._greedy_nearest_neighbor(start, stops, end)
+            optimized_points = [start] + optimized_stops + [end]
+
+        # Calculate optimized route metrics
+        optimized_distance, optimized_duration = await self._calculate_route_metrics(
+            optimized_points, profile, options
+        )
+
+        return OptimizationResult(
+            optimized_points=optimized_points,
+            original_distance_km=original_distance,
+            optimized_distance_km=optimized_distance,
+            original_duration_min=original_duration,
+            optimized_duration_min=optimized_duration
+        )
 
     async def _optimize_with_fixed_anchors(
         self,
@@ -323,6 +482,71 @@ class RouteOptimizer:
 
         return total_distance, total_duration
 
+    async def insert_stop_optimally(
+        self,
+        current_route: list[RoutePoint],
+        new_stop: RoutePoint,
+        profile: str = "car",
+        optimize_for: str = "time",
+        options: Optional[dict] = None
+    ) -> tuple[list[RoutePoint], dict]:
+        """
+        Insert a new stop at the optimal position using best insertion algorithm.
+
+        This is perfect for interactive UI where users add stops one by one.
+        Provides O(n) performance for instant feedback.
+
+        Args:
+            current_route: Current route points
+            new_stop: New stop to insert
+            profile: Routing profile
+            optimize_for: "time" or "distance"
+            options: Additional routing options
+
+        Returns:
+            Tuple of (updated_route, insertion_metrics)
+        """
+        if self._best_insertion_optimizer is None:
+            from app.services.routing.best_insertion import BestInsertionOptimizer
+            self._best_insertion_optimizer = BestInsertionOptimizer(self.routing_provider)
+
+        updated_route, insertion_result = await self._best_insertion_optimizer.insert_stop_at_best_position(
+            current_route, new_stop, profile, optimize_for, options
+        )
+
+        # Convert insertion result to metrics dict
+        metrics = {
+            "insertion_position": insertion_result.best_position,
+            "insertion_cost": insertion_result.insertion_cost,
+            "cost_increase_percent": (
+                (insertion_result.insertion_cost / insertion_result.total_cost_before * 100)
+                if insertion_result.total_cost_before > 0 else 0.0
+            ),
+            "total_cost_before": insertion_result.total_cost_before,
+            "total_cost_after": insertion_result.total_cost_after,
+            "cost_type": insertion_result.cost_type
+        }
+
+        return updated_route, metrics
+
     def clear_cache(self) -> None:
-        """Clear the route calculation cache."""
+        """Clear all optimization caches."""
         self._route_cache.clear()
+
+        if self._best_insertion_optimizer:
+            self._best_insertion_optimizer.clear_cache()
+
+    def get_cache_stats(self) -> dict:
+        """Get cache statistics for monitoring."""
+        stats = {
+            "route_cache_size": len(self._route_cache)
+        }
+
+        if self._best_insertion_optimizer:
+            insertion_stats = self._best_insertion_optimizer.get_cache_stats()
+            stats.update({
+                "insertion_cache_size": insertion_stats.get("cached_matrices", 0),
+                "insertion_matrix_entries": insertion_stats.get("total_cache_size", 0)
+            })
+
+        return stats

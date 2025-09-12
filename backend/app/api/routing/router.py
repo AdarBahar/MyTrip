@@ -39,8 +39,14 @@ from app.services.routing.day_route_breakdown import compute_day_route_breakdown
 from shapely.geometry import LineString
 from app.core.config import settings
 
+# Import best insertion router
+from app.api.v1.routing.best_insertion import router as best_insertion_router
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Include best insertion endpoints
+router.include_router(best_insertion_router, prefix="/optimization", tags=["route-optimization"])
 
 # In-memory storage for route previews (in production, use Redis)
 route_previews: Dict[str, Dict[str, Any]] = {}
