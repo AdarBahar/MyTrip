@@ -15,7 +15,7 @@ This module has been refactored to follow best practices including:
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any, List
 
 # Core routing imports
 from app.services.routing.base import RoutePoint, RoutingProvider, DistanceMatrix
