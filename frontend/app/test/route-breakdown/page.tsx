@@ -447,41 +447,61 @@ export default function RouteBreakdownPage() {
       const currentStopsResponse = await listStops(selectedTrip.id, selectedDay.id, { includePlaces: true })
       const currentStops = currentStopsResponse.stops as StopWithPlace[]
 
-      // Remove existing start/end stop if adding new one
+      // Remove existing start/end stop if adding new one and track deleted IDs
+      const deletedStopIds: string[] = []
+
       if (type === 'start') {
         const existingStart = currentStops.find(s => s.kind === 'start')
         if (existingStart) {
           await deleteStop(selectedTrip.id, selectedDay.id, existingStart.id)
+          deletedStopIds.push(existingStart.id)
           console.log('Removed existing start stop:', existingStart.id)
         }
       } else if (type === 'end') {
         const existingEnd = currentStops.find(s => s.kind === 'end')
         if (existingEnd) {
           await deleteStop(selectedTrip.id, selectedDay.id, existingEnd.id)
+          deletedStopIds.push(existingEnd.id)
           console.log('Removed existing end stop:', existingEnd.id)
         }
       }
 
-      // Determine sequence number - always use next available to avoid conflicts
-      const maxSeq = Math.max(...currentStops.map(s => s.seq || 0), 0)
+      // Determine sequence number based on remaining stops (excluding deleted ones)
+      const remainingStops = currentStops.filter(s => !deletedStopIds.includes(s.id))
+      const maxSeq = Math.max(...remainingStops.map(s => s.seq || 0), 0)
+
+      console.log('Remaining stops for sequence calculation:', remainingStops.map(s => ({
+        id: s.id,
+        seq: s.seq,
+        kind: s.kind
+      })))
+      console.log(`Max sequence from remaining stops: ${maxSeq}`)
       let seq: number
 
       if (type === 'start') {
+        // START is always sequence 1
         seq = 1
+      } else if (type === 'end') {
+        // END should be the last stop, so use max + 1
+        seq = maxSeq + 1
       } else {
-        // For stops and end, always use next available sequence
+        // VIA stops go in the middle, use next available
         seq = maxSeq + 1
       }
 
-      console.log(`Creating stop with seq=${seq}, type=${type}`)
+      console.log(`Creating ${type} stop with seq=${seq} (maxSeq was ${maxSeq}, shouldBeFixed=${shouldBeFixed})`)
 
       // Create the stop in the database
       const stopKind = type === 'stop' ? 'VIA' : type.toUpperCase()
+
+      // Database constraint: START and END stops must be fixed
+      const shouldBeFixed = type === 'start' || type === 'end'
+
       const stopData = {
         place_id: place.id,
         seq: seq,
         kind: stopKind as 'START' | 'VIA' | 'END',
-        fixed: false,
+        fixed: shouldBeFixed,
         notes: `Added via route breakdown on ${new Date().toLocaleDateString()}`,
         stop_type: 'OTHER',
         priority: 3
