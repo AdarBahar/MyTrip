@@ -489,13 +489,13 @@ export default function RouteBreakdownPage() {
         seq = maxSeq + 1
       }
 
-      console.log(`Creating ${type} stop with seq=${seq} (maxSeq was ${maxSeq}, shouldBeFixed=${shouldBeFixed})`)
-
       // Create the stop in the database
       const stopKind = type === 'stop' ? 'VIA' : type.toUpperCase()
 
       // Database constraint: START and END stops must be fixed
       const shouldBeFixed = type === 'start' || type === 'end'
+
+      console.log(`Creating ${type} stop with seq=${seq} (maxSeq was ${maxSeq}, shouldBeFixed=${shouldBeFixed})`)
 
       const stopData = {
         place_id: place.id,
