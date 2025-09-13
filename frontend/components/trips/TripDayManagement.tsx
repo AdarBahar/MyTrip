@@ -73,7 +73,7 @@ export default function TripDayManagement({
     const loadDayRoutePoints = async () => {
       try {
         // Load stops for the day
-        const stopsResponse = await listStops(selectedDay.id)
+        const stopsResponse = await listStops(trip.id, selectedDay.id)
         const stops = stopsResponse.data || []
 
         // Convert stops to route points
@@ -212,7 +212,7 @@ export default function TripDayManagement({
       })
 
       // Refresh route points
-      const stopsResponse = await listStops(selectedDay.id)
+      const stopsResponse = await listStops(trip.id, selectedDay.id)
       // ... refresh logic
 
       setShowPointTypeSelection(false)

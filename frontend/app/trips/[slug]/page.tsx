@@ -17,6 +17,7 @@ import { Trip, listTripsEnhanced } from '@/lib/api/trips'
 import { getApiBase } from '@/lib/api/base'
 import { getDaysSummary, DayLocationsSummary } from '@/lib/api/days'
 import { getBulkDayActiveSummaries } from '@/lib/api/routing'
+import { listStops } from '@/lib/api/stops'
 import { MapPreview } from '@/components/places'
 import TripRouteMap from '@/components/trips/TripRouteMap'
 import type { Day } from '@/types'
@@ -205,6 +206,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [totalRouteKm, setTotalRouteKm] = useState<number | null>(null)
+  const [stopsLoading, setStopsLoading] = useState(false)
   const [totalRouteMin, setTotalRouteMin] = useState<number | null>(null)
   const [tripRouteCoords, setTripRouteCoords] = useState<[number, number][]>([])
   const [summaryDays, setSummaryDays] = useState<Day[]>([])
@@ -227,6 +229,36 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
     return () => window.removeEventListener('resize', calc)
   }, [isFullMap])
   const { toast } = useToast()
+
+  // Function to load stops for all days
+  const loadStopsForAllDays = async (tripId: string, days: Day[]) => {
+    if (!days.length) return {}
+
+    setStopsLoading(true)
+    const stopsMap: Record<string, any[]> = {}
+
+    try {
+      // Load stops for each day
+      await Promise.all(
+        days.map(async (day) => {
+          try {
+            const stopsResponse = await listStops(tripId, day.id, { includePlaces: true })
+            stopsMap[day.id] = stopsResponse.data || []
+          } catch (error) {
+            console.warn(`Failed to load stops for day ${day.seq}:`, error)
+            stopsMap[day.id] = []
+          }
+        })
+      )
+    } catch (error) {
+      console.error('Error loading stops for days:', error)
+    } finally {
+      setStopsLoading(false)
+    }
+
+    return stopsMap
+  }
+
   // Initialize visibleDays from URL when in full-screen map
   useEffect(() => {
     if (!isFullMap) return
@@ -466,6 +498,19 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
         }
         setDayLocations(map)
         setSummaryDays(summaryResp.days as Day[])
+
+        // Load stops for all days and add to dayLocations
+        const stopsMap = await loadStopsForAllDays(foundTrip.id, summaryResp.days as Day[])
+
+        // Update dayLocations with stops data
+        const mapWithStops = { ...map }
+        for (const [dayId, stops] of Object.entries(stopsMap)) {
+          if (mapWithStops[dayId]) {
+            mapWithStops[dayId].stops = stops
+          }
+        }
+        setDayLocations(mapWithStops)
+
         if (hasAny) {
           setTotalRouteKm(kmSum)
           setTotalRouteMin(minSum)
