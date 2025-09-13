@@ -17,6 +17,10 @@ import {
   type RouteConfiguration
 } from '@/lib/services/route-change-detector'
 import PlacesSearch from '@/components/ui/PlacesSearch'
+import RoutePointsPanel, { type RoutePoint as RoutePointType, type RoutePointsActions } from '@/components/ui/RoutePointsPanel'
+import RouteResultsPanel, { type RouteResultsData } from '@/components/ui/RouteResultsPanel'
+import PointTypeSelectionModal, { DEFAULT_ROUTE_POINT_TYPES, createRoutePointOptions } from '@/components/ui/PointTypeSelectionModal'
+import GenericModal, { FormModal } from '@/components/ui/GenericModal'
 import { createTrip } from '@/lib/api/trips'
 import { Trip, TripCreate } from '@/types/trip'
 import { Day, DayCreate } from '@/types/day'
@@ -893,412 +897,150 @@ export default function RouteBreakdownPage() {
             
             {/* Route Points */}
             {selectedTrip && selectedDay && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Route Points</h2>
-                  <button
-                    onClick={() => setShowSearch(true)}
-                    className="flex items-center gap-1 px-3 py-1 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700"
-                  >
-                    <Search className="h-4 w-4" />
-                    Add Point
-                  </button>
-
-                  {selectedTrip && selectedDay && (
-                    <button
-                      onClick={debugApiCall}
-                      className="flex items-center gap-1 px-3 py-1 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700"
-                    >
-                      🐛 Debug API
-                    </button>
-                  )}
-                </div>
-
-                {loading ? (
-                  <div className="text-center py-6">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
-                    <p className="text-gray-600 mt-2">Loading existing route points...</p>
-                  </div>
-                ) : routePoints.length === 0 ? (
-                  <div className="text-center py-6 text-gray-500">
-                    <MapPin className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                    <p>No route points added yet</p>
-                    <p className="text-sm">Click "Add Point" to start building your route</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium text-gray-900">Route Points ({routePoints.length})</h4>
-                      <div className="flex items-center gap-2">
-                        <div className={`text-xs px-2 py-1 rounded-full ${
-                          routePersisted
-                            ? 'text-green-600 bg-green-50'
-                            : 'text-gray-600 bg-gray-50'
-                        }`}>
-                          {routePersisted ? '💾 Saved to database' : '📝 Not saved yet'}
-                        </div>
-                        <button
-                          onClick={() => setAutoComputeEnabled(!autoComputeEnabled)}
-                          className={`text-xs px-2 py-1 rounded-full border ${
-                            autoComputeEnabled
-                              ? 'text-blue-600 bg-blue-50 border-blue-200'
-                              : 'text-gray-600 bg-gray-50 border-gray-200'
-                          }`}
-                          title={autoComputeEnabled ? 'Auto-compute enabled' : 'Auto-compute disabled'}
-                        >
-                          {autoComputeEnabled ? '🔄 Auto' : '⏸️ Manual'}
-                        </button>
-                      </div>
-                    </div>
-                    {routePoints
-                      .sort((a, b) => {
-                        const order = { start: 0, stop: 1, end: 2 }
-                        return order[a.type] - order[b.type]
-                      })
-                      .map((point, index) => (
-                        <div
-                          key={point.id}
-                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border-l-4"
-                          style={{
-                            borderLeftColor:
-                              point.type === 'start' ? '#10b981' :
-                              point.type === 'end' ? '#ef4444' : '#3b82f6'
-                          }}
-                        >
-                          <div className="flex items-center gap-3 flex-1">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                                point.type === 'start' ? 'bg-green-500' :
-                                point.type === 'end' ? 'bg-red-500' : 'bg-blue-500'
-                              }`}>
-                                {point.type === 'start' ? 'S' : point.type === 'end' ? 'E' : index}
-                              </div>
-                              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                                {point.type}
-                              </div>
-                              {point.fixed && (
-                                <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-medium">
-                                  FIXED
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-gray-900">
-                                {point.name}
-                              </div>
-                              <div className="text-xs text-gray-600">
-                                {point.lat.toFixed(6)}, {point.lon.toFixed(6)}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {point.type === 'stop' && (
-                              <button
-                                onClick={() => toggleFixed(point.id, point.fixed || false)}
-                                className={`px-2 py-1 text-xs rounded transition-colors ${
-                                  point.fixed
-                                    ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
-                                title={point.fixed ? 'Unfix stop (allow optimization)' : 'Fix stop (prevent optimization)'}
-                              >
-                                {point.fixed ? '🔒' : '🔓'}
-                              </button>
-                            )}
-                            <button
-                              onClick={() => removePoint(point.id)}
-                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                              title="Remove point"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                )}
-
-                {routePoints.length >= 2 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
-                    <button
-                      onClick={() => handleComputeBreakdown(false)}
-                      disabled={loading}
-                      className="w-full py-2 px-4 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {loading ? 'Computing...' : 'Compute Route Breakdown'}
-                    </button>
-
-                    {routePoints.filter(p => p.type === 'stop').length > 1 && (
-                      <button
-                        onClick={() => handleComputeBreakdown(true)}
-                        disabled={loading}
-                        className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        <span>🚀</span>
-                        {loading ? 'Optimizing...' : 'Optimize & Compute Route'}
-                      </button>
-                    )}
-
-                    {routePoints.filter(p => p.type === 'stop').length <= 1 && (
-                      <p className="text-sm text-gray-500 text-center">
-                        Add 2+ stops to enable route optimization
-                      </p>
-                    )}
-
-                    {/* Persistence Status */}
-                    {persistenceInfo && (
-                      <div className="mt-3 p-2 bg-gray-50 rounded-md">
-                        <div className="text-xs text-gray-600">
-                          <span className="font-medium">Route Status:</span> {persistenceInfo}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <RoutePointsPanel
+                title="Route Points"
+                points={routePoints.map(p => ({
+                  id: p.id,
+                  name: p.name,
+                  lat: p.lat,
+                  lon: p.lon,
+                  type: p.type as 'start' | 'stop' | 'end',
+                  fixed: p.fixed,
+                  seq: p.seq
+                }))}
+                loading={loading}
+                actions={{
+                  onAddPoint: () => setShowSearch(true),
+                  onRemovePoint: removePoint,
+                  onToggleFixed: toggleFixed,
+                  onDebugAction: debugApiCall
+                }}
+                persistenceStatus={{
+                  saved: routePersisted,
+                  message: persistenceInfo
+                }}
+                autoCompute={{
+                  enabled: autoComputeEnabled,
+                  onToggle: () => setAutoComputeEnabled(!autoComputeEnabled)
+                }}
+                primaryAction={{
+                  label: 'Compute Route Breakdown',
+                  onClick: () => handleComputeBreakdown(false),
+                  disabled: loading,
+                  loading: loading
+                }}
+                secondaryAction={routePoints.filter(p => p.type === 'stop').length > 1 ? {
+                  label: 'Optimize & Compute Route',
+                  onClick: () => handleComputeBreakdown(true),
+                  disabled: loading,
+                  loading: loading,
+                  icon: <span>🚀</span>
+                } : undefined}
+                requirementMessage={routePoints.filter(p => p.type === 'stop').length <= 1 ?
+                  "Add 2+ stops to enable route optimization" : undefined}
+                statusMessage={persistenceInfo}
+                showDebugButton={true}
+                showFixToggle={true}
+                sortPoints={true}
+              />
             )}
 
             {/* Route Breakdown Results */}
             {breakdown && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Route Breakdown</h2>
-                
-                {/* Map */}
-                <div className="mb-6">
-                  <RouteBreakdownMap
-                    breakdown={breakdown}
-                    center={breakdown?.start ? [breakdown.start.lat, breakdown.start.lon] : undefined}
-                    zoom={12}
-                    height={400}
-                  />
-                </div>
-
-                {/* Summary */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="text-center p-3 bg-blue-50 rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {(breakdown?.total_distance_km || 0).toFixed(1)} km
-                    </div>
-                    <div className="text-sm text-blue-800">Total Distance</div>
-                  </div>
-                  <div className="text-center p-3 bg-green-50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">
-                      {Math.round(breakdown?.total_duration_min || 0)} min
-                    </div>
-                    <div className="text-sm text-green-800">Total Duration</div>
-                  </div>
-                </div>
-
-                {/* Optimization Results */}
-                {breakdown?.optimization_savings && (
-                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xl">🚀</span>
-                      <h3 className="font-semibold text-yellow-800">Route Optimization Results</h3>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <div className="font-medium text-yellow-800">Distance Saved</div>
-                        <div className="text-yellow-700">
-                          {breakdown.optimization_savings.distance_km_saved.toFixed(2)} km
-                          ({breakdown.optimization_savings.distance_improvement_percent.toFixed(1)}% improvement)
-                        </div>
-                      </div>
-                      <div>
-                        <div className="font-medium text-yellow-800">Time Saved</div>
-                        <div className="text-yellow-700">
-                          {Math.round(breakdown.optimization_savings.duration_min_saved)} min
-                          ({breakdown.optimization_savings.duration_improvement_percent.toFixed(1)}% improvement)
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Segments */}
-                {breakdown?.segments && breakdown.segments.length > 0 && (
-                  <div>
-                    <h3 className="font-medium text-gray-900 mb-2">Route Segments</h3>
-                    <div className="space-y-2">
-                      {breakdown.segments.map((segment, index) => (
-                        <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="font-medium">
-                                {segment?.from_point?.name || 'Unknown'} → {segment?.to_point?.name || 'Unknown'}
-                              </div>
-                              <div className="text-sm text-gray-600">
-                                {(segment?.distance_km || 0).toFixed(1)} km • {Math.round(segment?.duration_min || 0)} min
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <RouteResultsPanel
+                title="Route Breakdown"
+                data={breakdown}
+                showMap={true}
+                mapHeight={400}
+                mapCenter={breakdown?.start ? [breakdown.start.lat, breakdown.start.lon] : undefined}
+                mapZoom={12}
+                showSummary={true}
+                showOptimizationResults={true}
+                showSegments={true}
+                showPersistenceInfo={true}
+                summaryLayout="grid"
+              />
             )}
           </div>
         </div>
       </div>
 
       {/* Search Modal */}
-      {showSearch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Add Route Point</h3>
-              <button
-                onClick={() => setShowSearch(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <PlacesSearch
-                useRealGeocoding={true}
-                placeholder="Search for any location worldwide..."
-                onPlaceSelect={handlePlaceFromSearch}
-                supportRTL={true}
-                autoSearch={true}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <GenericModal
+        isOpen={showSearch}
+        onClose={() => setShowSearch(false)}
+        title="Add Route Point"
+        size="md"
+      >
+        <PlacesSearch
+          useRealGeocoding={true}
+          placeholder="Search for any location worldwide..."
+          onPlaceSelect={handlePlaceFromSearch}
+          supportRTL={true}
+          autoSearch={true}
+        />
+      </GenericModal>
 
       {/* Point Type Selection Modal */}
-      {showPointTypeSelection && selectedPlace && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Select Point Type</h3>
-              <button
-                onClick={() => {
-                  setShowPointTypeSelection(false)
-                  setSelectedPlace(null)
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Selected: <strong>{selectedPlace.name}</strong>
-              </p>
-
-              <div className="space-y-3">
-                <button
-                  onClick={() => handlePointTypeSelect('start')}
-                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div>
-                      <div className="font-medium">Start Point</div>
-                      <div className="text-sm text-gray-600">Beginning of your journey</div>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handlePointTypeSelect('stop')}
-                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    <div>
-                      <div className="font-medium">Stop Point</div>
-                      <div className="text-sm text-gray-600">Intermediate destination</div>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handlePointTypeSelect('end')}
-                  className="w-full p-3 text-left border border-gray-200 rounded-lg hover:border-red-500 hover:bg-red-50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <div>
-                      <div className="font-medium">End Point</div>
-                      <div className="text-sm text-gray-600">Final destination</div>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <PointTypeSelectionModal
+        isOpen={showPointTypeSelection}
+        onClose={() => {
+          setShowPointTypeSelection(false)
+          setSelectedPlace(null)
+        }}
+        onSelect={handlePointTypeSelect}
+        title="Select Point Type"
+        selectedItem={selectedPlace ? {
+          name: selectedPlace.name,
+          lat: selectedPlace.lat,
+          lon: selectedPlace.lon,
+          address: selectedPlace.address
+        } : null}
+        options={createRoutePointOptions(routePoints)}
+        showSelectedItemDetails={true}
+        selectedItemLabel="Selected"
+      />
 
       {/* Create Trip Modal */}
-      {showCreateTrip && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Create New Trip</h3>
-              <button
-                onClick={() => setShowCreateTrip(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <FormModal
+        isOpen={showCreateTrip}
+        onClose={() => setShowCreateTrip(false)}
+        onSubmit={handleCreateTrip}
+        title="Create New Trip"
+        submitLabel="Create Trip"
+        loading={loading}
+        preventClose={loading}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Trip Name
+            </label>
+            <input
+              type="text"
+              value={newTripName}
+              onChange={(e) => setNewTripName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g., European Adventure"
+              disabled={loading}
+            />
+          </div>
 
-            <div className="p-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Trip Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newTripName}
-                    onChange={(e) => setNewTripName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., European Adventure"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Destination
-                  </label>
-                  <input
-                    type="text"
-                    value={newTripLocation}
-                    onChange={(e) => setNewTripLocation(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Europe"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowCreateTrip(false)}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCreateTrip}
-                    disabled={!newTripName.trim() || !newTripLocation.trim() || loading}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {loading ? 'Creating...' : 'Create Trip'}
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Destination
+            </label>
+            <input
+              type="text"
+              value={newTripLocation}
+              onChange={(e) => setNewTripLocation(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g., Europe"
+              disabled={loading}
+            />
           </div>
         </div>
-      )}
+      </FormModal>
     </div>
   )
 }
