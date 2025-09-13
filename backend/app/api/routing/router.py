@@ -2,6 +2,7 @@
 Routing API router
 """
 import uuid
+from datetime import datetime
 from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
@@ -36,8 +37,10 @@ from app.services.routing import (
 )
 from app.services.routing.base import RoutingRateLimitError
 from app.services.routing.day_route_breakdown import compute_day_route_breakdown
+from app.services.routing.route_persistence import RoutePersistenceService
 from shapely.geometry import LineString
 from app.core.config import settings
+from app.core.auth import get_current_user
 
 # Import best insertion router
 from app.api.v1.routing.best_insertion import router as best_insertion_router
@@ -665,7 +668,9 @@ async def get_bulk_active_summaries(body: BulkDayRouteSummaryRequest, db: Sessio
 @router.post("/days/route-breakdown", response_model=DayRouteBreakdownResponse)
 async def compute_day_route_breakdown_endpoint(
     request: DayRouteBreakdownRequest,
-    db: Session = Depends(get_db)
+    persist_route: bool = True,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
 ):
     """
     Compute detailed route breakdown for a complete day's journey
@@ -721,6 +726,34 @@ async def compute_day_route_breakdown_endpoint(
             f"Route breakdown computed: {breakdown.total_distance_km:.2f}km, "
             f"{breakdown.total_duration_min:.1f}min across {len(breakdown.segments)} segments"
         )
+
+        # Persist route to database if requested and route has changed
+        route_version = None
+        if persist_route:
+            try:
+                persistence_service = RoutePersistenceService(db)
+                route_version = await persistence_service.persist_route_breakdown(
+                    request, breakdown, current_user
+                )
+
+                if route_version:
+                    logger.info(
+                        f"Route persisted to database: version {route_version.version} "
+                        f"for day {request.day_id}"
+                    )
+
+                    # Add persistence info to response
+                    breakdown.route_version_id = route_version.id
+                    breakdown.route_persisted = True
+                    breakdown.persistence_reason = f"Route changes detected, saved as version {route_version.version}"
+                else:
+                    logger.info(f"Route not persisted - no significant changes detected for day {request.day_id}")
+                    breakdown.route_persisted = False
+                    breakdown.persistence_reason = "No significant changes detected compared to existing route"
+
+            except Exception as e:
+                logger.warning(f"Route persistence failed for day {request.day_id}: {e}")
+                # Continue without failing the breakdown computation
 
         return breakdown
 

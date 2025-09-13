@@ -178,3 +178,17 @@ class DayRouteBreakdownResponse(BaseModel):
     )
     summary: Dict[str, Any] = Field(..., description="Additional summary information")
     computed_at: datetime = Field(..., description="When this breakdown was computed")
+
+    # Route persistence information
+    route_version_id: Optional[str] = Field(
+        default=None,
+        description="ID of the route version if route was persisted to database"
+    )
+    route_persisted: bool = Field(
+        default=False,
+        description="Whether this route was saved to the database"
+    )
+    persistence_reason: Optional[str] = Field(
+        default=None,
+        description="Reason why route was or wasn't persisted"
+    )
