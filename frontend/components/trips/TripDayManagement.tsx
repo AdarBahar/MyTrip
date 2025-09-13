@@ -63,7 +63,15 @@ export default function TripDayManagement({
 
   // Update day locations when prefilledLocations change
   useEffect(() => {
-    setDayLocations(prefilledLocations)
+    setDayLocations(prev => {
+      // Only update if actually different to prevent unnecessary re-renders
+      const prevKeys = Object.keys(prev).sort()
+      const newKeys = Object.keys(prefilledLocations).sort()
+      if (prevKeys.join(',') !== newKeys.join(',')) {
+        return prefilledLocations
+      }
+      return prev
+    })
   }, [prefilledLocations])
 
   // Load route points for selected day

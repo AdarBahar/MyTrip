@@ -396,7 +396,10 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
     // Check authentication
     const token = localStorage.getItem('auth_token')
     if (!token) {
-      router.push('/login')
+      // Use setTimeout to avoid state update during render
+      setTimeout(() => {
+        router.push('/login')
+      }, 0)
       return
     }
 
@@ -443,7 +446,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
     }
     window.addEventListener('day-summary-updated', onUpdate as any)
     return () => window.removeEventListener('day-summary-updated', onUpdate as any)
-  }, [summaryDays])
+  }, [summaryDays.length])
 
   // When a day is added, ensure it's visible in the main map breakdown and totals
   useEffect(() => {
@@ -543,19 +546,19 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
             combined.push(...l.route_coordinates)
           }
         }
-        setDayLocations(map)
-        setSummaryDays(summaryResp.days as Day[])
-
         // Load stops for all days and add to dayLocations
         const stopsMap = await loadStopsForAllDays(foundTrip.id, summaryResp.days as Day[])
 
-        // Update dayLocations with stops data
+        // Update dayLocations with stops data in one go
         const mapWithStops = { ...map }
         for (const [dayId, stops] of Object.entries(stopsMap)) {
           if (mapWithStops[dayId]) {
             mapWithStops[dayId].stops = stops
           }
         }
+
+        // Set all state in one batch
+        setSummaryDays(summaryResp.days as Day[])
         setDayLocations(mapWithStops)
 
         if (hasAny) {
