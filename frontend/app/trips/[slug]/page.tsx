@@ -11,8 +11,7 @@ import { fetchWithAuth } from '@/lib/auth'
 import { MinimalDebugToggle } from '@/components/minimal-debug'
 import { TripDateActions } from '@/components/trips/trip-date-actions'
 import { DaysList } from '@/components/days'
-import RouteResultsPanel, { type RouteResultsData } from '@/components/ui/RouteResultsPanel'
-import GenericModal, { ConfirmationModal, InfoModal } from '@/components/ui/GenericModal'
+import GenericModal from '@/components/ui/GenericModal'
 import { Trip, listTripsEnhanced } from '@/lib/api/trips'
 import { getApiBase } from '@/lib/api/base'
 import { getDaysSummary, DayLocationsSummary } from '@/lib/api/days'
@@ -56,194 +55,7 @@ const ErrorState = ({
   </div>
 )
 
-// Trip Route Overview Component using reusable RouteResultsPanel
-const TripRouteOverview = ({
-  trip,
-  summaryDays,
-  dayLocations,
-  totalRouteKm,
-  totalRouteMin,
-  tripRouteCoords,
-  dayColors,
-  hoverDayId,
-  setHoverDayId,
-  visibleDays,
-  setVisibleDays,
-  routesDayId,
-  setRoutesDayId,
-  setShowRoutes,
-  toast
-}: any) => {
-  // Convert trip data to RouteResultsData format
-  const routeData: RouteResultsData = {
-    total_distance_km: totalRouteKm || 0,
-    total_duration_min: totalRouteMin || 0,
-    segments: [...summaryDays].sort((a, b) => a.seq - b.seq).map((d: any) => {
-      const loc = (dayLocations as any)[d.id]
-      return {
-        from_name: `Day ${d.seq}`,
-        to_name: d.calculated_date ? new Date(d.calculated_date).toLocaleDateString('en-US', {
-          weekday: 'short', month: 'short', day: 'numeric'
-        }) : '',
-        distance_km: loc?.route_total_km || 0,
-        duration_min: loc?.route_total_min || 0,
-        segment_type: 'day_route'
-      }
-    }),
-    geometry: tripRouteCoords.length > 0 ? {
-      type: "LineString",
-      coordinates: tripRouteCoords
-    } : undefined
-  }
 
-  const customSummaryRenderer = () => (
-    <div className="space-y-4">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="text-center p-3 bg-blue-50 rounded-lg">
-          <div className="text-2xl font-bold text-blue-600">
-            {Math.round(totalRouteKm || 0)} km
-          </div>
-          <div className="text-sm text-blue-800">Total Distance</div>
-        </div>
-        <div className="text-center p-3 bg-green-50 rounded-lg">
-          <div className="text-2xl font-bold text-green-600">
-            {Math.floor((totalRouteMin || 0) / 60)}h {Math.round((totalRouteMin || 0) % 60)}m
-          </div>
-          <div className="text-sm text-green-800">Total Duration</div>
-        </div>
-      </div>
-
-      {/* Route Management Controls */}
-      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-        <div className="text-sm text-gray-700">
-          Combined driving across all days
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="text-xs border rounded px-1 py-0.5"
-            value={routesDayId || ''}
-            onChange={(e) => setRoutesDayId(e.target.value || null)}
-          >
-            <option value="">Select day…</option>
-            {[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d: any) => (
-              <option key={d.id} value={d.id}>Day {d.seq}</option>
-            ))}
-          </select>
-          <Button variant="outline" size="sm" onClick={() => {
-            const id = routesDayId || hoverDayId || (summaryDays[0]?.id || null)
-            if (!id) {
-              toast({ title: 'No day selected', description: 'Choose a day to manage routes.' })
-              return
-            }
-            setRoutesDayId(id)
-            setShowRoutes(true)
-          }}>
-            Manage routes
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-
-  const customSegmentRenderer = (segment: any, index: number) => {
-    const dayData = summaryDays[index]
-    const loc = dayLocations[dayData?.id]
-    const hasRoute = loc && typeof loc.route_total_km === 'number' && typeof loc.route_total_min === 'number'
-
-    return (
-      <div className="flex items-center justify-between text-sm text-gray-700 p-2 border rounded">
-        <div>
-          <span className="font-medium">Day {dayData?.seq}</span>
-          {dayData?.calculated_date && (
-            <span className="ml-2 text-gray-500">
-              {new Date(dayData.calculated_date).toLocaleDateString('en-US', {
-                weekday: 'short', month: 'short', day: 'numeric'
-              })}
-            </span>
-          )}
-        </div>
-        <div className="text-right">
-          {hasRoute ? (
-            <span>
-              {Math.round(loc.route_total_km)} km • {Math.floor(loc.route_total_min / 60)}h {Math.round(loc.route_total_min % 60)}m
-            </span>
-          ) : (
-            <span className="text-gray-400">Routing unavailable</span>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (summaryDays.length === 0) {
-    return (
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Total Trip Route</CardTitle>
-          <CardDescription>Combined driving across all days</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-gray-500">
-            Routing unavailable yet. Set start/end for days to see total route.
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <div className="mb-8">
-      <RouteResultsPanel
-        title="Total Trip Route"
-        data={routeData}
-        showMap={true}
-        mapHeight={280}
-        showSummary={true}
-        showOptimizationResults={false}
-        showSegments={true}
-        showPersistenceInfo={false}
-        customSummaryRenderer={customSummaryRenderer}
-        customSegmentRenderer={customSegmentRenderer}
-        className="mb-0"
-      />
-
-      {/* Day Legend with toggles */}
-      {summaryDays.length > 0 && (
-        <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg">
-          <div className="text-xs text-gray-600 flex items-center gap-4 flex-wrap">
-            {[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d: any, idx: number) => (
-              <label key={d.id} className="flex items-center gap-2 cursor-pointer"
-                onMouseEnter={() => setHoverDayId(d.id)}
-                onMouseLeave={() => setHoverDayId(null)}
-              >
-                <input
-                  type="checkbox"
-                  checked={visibleDays[d.id] ?? true}
-                  onChange={(e) => setVisibleDays((v: any) => ({ ...v, [d.id]: e.target.checked }))}
-                />
-                <span
-                  className="inline-block w-3 h-0.5"
-                  style={{ backgroundColor: dayColors[idx % dayColors.length] }}
-                />
-                <span>Day {d.seq}</span>
-              </label>
-            ))}
-          </div>
-
-          {/* Full screen map CTA */}
-          {tripRouteCoords.length > 0 && (
-            <div className="mt-4 text-right">
-              <Button variant="outline" asChild>
-                <Link href={`/trips/${trip.slug}?view=map`}>View on full-screen map</Link>
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function TripDetailPage({ params }: { params: { slug: string } }) {
   const [trip, setTrip] = useState<Trip | null>(null)
@@ -662,23 +474,118 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
         </div>
 
         {/* Trip Route Overview */}
-        <TripRouteOverview
-          trip={trip}
-          summaryDays={summaryDays}
-          dayLocations={dayLocations}
-          totalRouteKm={totalRouteKm}
-          totalRouteMin={totalRouteMin}
-          tripRouteCoords={tripRouteCoords}
-          dayColors={dayColors}
-          hoverDayId={hoverDayId}
-          setHoverDayId={setHoverDayId}
-          visibleDays={visibleDays}
-          setVisibleDays={setVisibleDays}
-          routesDayId={routesDayId}
-          setRoutesDayId={setRoutesDayId}
-          setShowRoutes={setShowRoutes}
-          toast={toast}
-        />
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle>Total Trip Route</CardTitle>
+                <CardDescription>
+                  Combined driving across all days
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-4">
+                {typeof totalRouteKm === 'number' && typeof totalRouteMin === 'number' && (
+                  <div className="text-sm text-gray-700">
+                    {Math.round(totalRouteKm)} km • {Math.floor(totalRouteMin / 60)}h {Math.round(totalRouteMin % 60)}m
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <select className="text-xs border rounded px-1 py-0.5" value={routesDayId || ''} onChange={(e) => setRoutesDayId(e.target.value || null)}>
+                    <option value="">Select day…</option>
+                    {[...summaryDays].sort((a,b)=>a.seq-b.seq).map(d => (
+                      <option key={d.id} value={d.id}>Day {d.seq}</option>
+                    ))}
+                  </select>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    const id = routesDayId || hoverDayId || (summaryDays[0]?.id || null)
+                    if (!id) { toast({ title: 'No day selected', description: 'Choose a day to manage routes.' }); return }
+                    setRoutesDayId(id); setShowRoutes(true)
+                  }}>Manage routes</Button>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {summaryDays.length > 0 ? (
+              <MapPreview
+                extraMarkers={[...summaryDays].sort((a,b)=>a.seq-b.seq).flatMap((d) => {
+                  const loc = (dayLocations as any)[d.id]
+                  const stops = (loc?.stops || []) as any[]
+                  return stops.map((s, idx) => ({
+                    id: `${d.id}:${s.id || s.place_id || idx}`,
+                    lat: s.place?.lat ?? s.lat,
+                    lon: s.place?.lon ?? s.lon,
+                    color: '#111827',
+                    label: [s.place?.name, s.place?.address].filter(Boolean).join(' — ')
+                  }))
+                })}
+                routes={[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
+                  const loc = (dayLocations as any)[d.id]
+                  const coords = loc?.route_coordinates as [number, number][] | undefined
+                  if (!coords || !coords.length) return null
+                  return { id: d.id, coordinates: coords, color: dayColors[idx % dayColors.length] }
+                }).filter(Boolean) as {id:string, coordinates:[number,number][], color?: string}[]}
+                highlightRouteId={hoverDayId}
+                height={280}
+                className="rounded-md overflow-hidden"
+                interactive
+              />
+            ) : (
+              <div className="text-sm text-gray-500">Routing unavailable yet. Set start/end for days to see total route.</div>
+            )}
+            {/* Legend with toggles and hover */}
+            {summaryDays.length > 0 && (
+              <div className="mt-2 text-xs text-gray-600 flex items-center gap-4 flex-wrap">
+                {[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => (
+                  <label key={d.id} className="flex items-center gap-2 cursor-pointer"
+                    onMouseEnter={() => setHoverDayId(d.id)}
+                    onMouseLeave={() => setHoverDayId(null)}
+                  >
+                    <input type="checkbox" checked={visibleDays[d.id] ?? true} onChange={(e) => setVisibleDays(v => ({ ...v, [d.id]: e.target.checked }))} />
+                    <span className="inline-block w-3 h-0.5" style={{ backgroundColor: dayColors[idx % dayColors.length] }} />
+                    <span>Day {d.seq}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {/* Per-day breakdown */}
+            {summaryDays.length > 0 && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {[...summaryDays].sort((a, b) => a.seq - b.seq).map((d) => {
+                  const loc = (dayLocations as any)[d.id]
+                  const has = loc && typeof loc.route_total_km === 'number' && typeof loc.route_total_min === 'number'
+                  return (
+                    <div key={d.id} className="flex items-center justify-between text-sm text-gray-700 p-2 border rounded">
+                      <div>
+                        <span className="font-medium">Day {d.seq}</span>
+                        {d.calculated_date && (
+                          <span className="ml-2 text-gray-500">
+                            {new Date(d.calculated_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        {has ? (
+                          <span>{Math.round(loc.route_total_km)} km • {Math.floor(loc.route_total_min / 60)}h {Math.round(loc.route_total_min % 60)}m</span>
+                        ) : (
+                          <span className="text-gray-400">Routing unavailable</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {/* Full screen map CTA */}
+            {tripRouteCoords.length > 0 && (
+              <div className="mt-4 text-right">
+                <Button variant="outline" asChild>
+                  <Link href={`/trips/${trip.slug}?view=map`}>View on full-screen map</Link>
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Trip Info Card */}
         <Card className="mb-8">
