@@ -58,8 +58,8 @@ const ErrorState = ({
   </div>
 )
 
-// Helper function to convert trip data to TripRouteMap format
-const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors: string[]) => {
+// Helper function to convert trip data to TripRouteMap format (moved outside component)
+function convertToTripRouteData(summaryDays: any[], dayLocations: any, dayColors: string[]) {
   if (!summaryDays || !Array.isArray(summaryDays) || !dayLocations) {
     return []
   }
@@ -313,18 +313,23 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
 
   // Keep URL in sync with day visibility while in full-screen map
   useEffect(() => {
-    if (!isFullMap) return
+    if (!isFullMap || !summaryDays.length) return
+
     const visible = [...summaryDays]
       .sort((a,b)=>a.seq-b.seq)
       .filter(d => (visibleDays[d.id] ?? true))
       .map(d => d.id)
+
     const qs = new URLSearchParams(searchParams?.toString() || '')
     qs.set('view', 'map')
     if (visible.length) qs.set('visible', visible.join(','))
     else qs.delete('visible')
-    // Replace query without adding history entries
-    router.replace(`?${qs.toString()}`)
-  }, [visibleDays, isFullMap, summaryDays.length])
+
+    // Use setTimeout to avoid state update during render
+    setTimeout(() => {
+      router.replace(`?${qs.toString()}`)
+    }, 0)
+  }, [visibleDays, isFullMap, summaryDays.length, searchParams, router])
 
   // Prefilled locations for DaysList summary
   const [dayLocations, setDayLocations] = useState<Record<string, { start?: any; end?: any; route_total_km?: number; route_total_min?: number; route_coordinates?: [number, number][]; stops?: any[] }>>({})
@@ -359,11 +364,14 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
   // If user setting not set, infer from trip places and persist once
   useEffect(() => {
     if (hasUserSettingShowCountry !== false) return
+    if (!summaryDays.length || !Object.keys(dayLocations).length) return
+
     // Try to find first country code from any day's start/end
-    const days = [...(summaryDays || [])].sort((a,b) => a.seq - b.seq)
+    const days = [...summaryDays].sort((a,b) => a.seq - b.seq)
     let cc: string | null = null
     for (const d of days) {
-      const loc: any = (dayLocations as any)[d.id]
+      const loc: any = dayLocations[d.id]
+      if (!loc) continue
       const placeCandidates = [loc?.start, loc?.end]
       for (const p of placeCandidates) {
         if (!p || !p.meta) continue
@@ -379,7 +387,7 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
     setShowCountrySuffix(val)
     updateUserSettings({ show_country_suffix: val }).catch(() => {})
     setHasUserSettingShowCountry(true)
-  }, [summaryDays, dayLocations, hasUserSettingShowCountry])
+  }, [summaryDays.length, Object.keys(dayLocations).length, hasUserSettingShowCountry])
 
   // Color palette for per-day segments
   const dayColors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#22c55e','#eab308','#06b6d4','#f97316'] as const
