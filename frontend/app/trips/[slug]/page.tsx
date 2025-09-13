@@ -70,6 +70,8 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
       const loc = dayLocations[day.id]
       const coords = loc?.route_coordinates as [number, number][] | undefined
 
+
+
       if (!coords || !coords.length) {
         return null
       }
@@ -89,13 +91,38 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
           })
         }
 
-        // Add intermediate stops - check multiple possible data structures
-        if (loc.stops && Array.isArray(loc.stops)) {
+        // Add intermediate stops - handle multiple data structures
+        if (loc.stops && Array.isArray(loc.stops) && loc.stops.length > 0) {
+
+
           loc.stops.forEach((stop: any, stopIdx: number) => {
             // Handle different stop data structures
-            const stopLat = stop.place?.lat ?? stop.lat ?? stop.location?.lat
-            const stopLon = stop.place?.lon ?? stop.lon ?? stop.location?.lon
-            const stopName = stop.place?.name || stop.name || stop.location?.name || `Day ${day.seq} Stop ${stopIdx + 1}`
+            let stopLat, stopLon, stopName
+
+            // Try different data structures
+            if (stop.place) {
+              // Stop with place object
+              stopLat = stop.place.lat
+              stopLon = stop.place.lon
+              stopName = stop.place.name
+            } else if (stop.lat && stop.lon) {
+              // Direct lat/lon on stop
+              stopLat = stop.lat
+              stopLon = stop.lon
+              stopName = stop.name
+            } else if (stop.location) {
+              // Stop with location object
+              stopLat = stop.location.lat
+              stopLon = stop.location.lon
+              stopName = stop.location.name
+            }
+
+            // Fallback name
+            if (!stopName) {
+              stopName = `Day ${day.seq} Stop ${stopIdx + 1}`
+            }
+
+
 
             if (stopLat && stopLon) {
               stops.push({
@@ -104,8 +131,12 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
                 name: stopName,
                 type: 'stop'
               })
+            } else {
+
             }
           })
+        } else {
+
         }
 
         // Add end point
@@ -120,16 +151,21 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
       }
 
       // Strategy 2: If no explicit points, create from route coordinates
-      if (stops.length === 0 && coords.length >= 2) {
+      if (stops.length <= 2 && coords.length >= 2) { // Changed condition to include cases with only start/end
+
+
         const startCoord = coords[0]
         const endCoord = coords[coords.length - 1]
 
-        stops.push({
-          lat: startCoord[1],
-          lon: startCoord[0],
-          name: `Day ${day.seq} Start`,
-          type: 'start'
-        })
+        // Only add start if not already present
+        if (!stops.some(s => s.type === 'start')) {
+          stops.push({
+            lat: startCoord[1],
+            lon: startCoord[0],
+            name: `Day ${day.seq} Start`,
+            type: 'start'
+          })
+        }
 
         // Add intermediate points if route is long enough
         if (coords.length > 20) {
@@ -157,8 +193,9 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
           })
         }
 
-        // Add end if different from start
-        if (startCoord[0] !== endCoord[0] || startCoord[1] !== endCoord[1]) {
+        // Only add end if not already present and different from start
+        if (!stops.some(s => s.type === 'end') &&
+            (startCoord[0] !== endCoord[0] || startCoord[1] !== endCoord[1])) {
           stops.push({
             lat: endCoord[1],
             lon: endCoord[0],
@@ -189,6 +226,8 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
           })
         }
       }
+
+
 
       return {
         id: day.id,
