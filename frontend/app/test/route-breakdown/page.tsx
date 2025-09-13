@@ -10,6 +10,12 @@ import { useTrips } from '@/hooks/use-trips'
 import { useDays } from '@/hooks/use-days'
 import { computeDayRouteBreakdown } from '@/lib/api/day-route-breakdown'
 import { DayRouteBreakdownResponse } from '@/types/day-route-breakdown'
+import {
+  routeChangeDetector,
+  autoComputeRouteOnChange,
+  createRouteConfiguration,
+  type RouteConfiguration
+} from '@/lib/services/route-change-detector'
 import PlacesSearch from '@/components/ui/PlacesSearch'
 import { createTrip } from '@/lib/api/trips'
 import { Trip, TripCreate } from '@/types/trip'
@@ -54,6 +60,11 @@ export default function RouteBreakdownPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [debugInfo, setDebugInfo] = useState<string>('')
+
+  // Route persistence state
+  const [routePersisted, setRoutePersisted] = useState(false)
+  const [persistenceInfo, setPersistenceInfo] = useState<string>('')
+  const [autoComputeEnabled, setAutoComputeEnabled] = useState(true)
 
   // UI state
   const [showSearch, setShowSearch] = useState(false)
@@ -586,6 +597,68 @@ export default function RouteBreakdownPage() {
     }
   }
 
+  // Auto-compute route when changes are detected
+  const autoComputeRoute = async (config: RouteConfiguration) => {
+    const requestData = {
+      trip_id: config.tripId,
+      day_id: config.dayId,
+      start: config.start,
+      stops: config.stops,
+      end: config.end,
+      profile: config.profile,
+      optimize: config.optimize,
+      fixed_stop_indices: config.fixedStopIndices || []
+    }
+
+    const result = await computeDayRouteBreakdown(requestData)
+
+    // Update persistence info
+    if (result.route_persisted) {
+      setRoutePersisted(true)
+      setPersistenceInfo(result.persistence_reason || 'Route saved to database')
+    } else {
+      setRoutePersisted(false)
+      setPersistenceInfo(result.persistence_reason || 'Route not saved - no changes detected')
+    }
+
+    return result
+  }
+
+  // Check for route changes and auto-compute if enabled
+  const checkAndAutoCompute = async () => {
+    if (!selectedTrip || !selectedDay || !autoComputeEnabled) return
+
+    const startPoint = routePoints.find(p => p.type === 'start')
+    const endPoint = routePoints.find(p => p.type === 'end')
+    const stopPoints = routePoints.filter(p => p.type === 'stop')
+
+    if (!startPoint || !endPoint) return
+
+    const config = createRouteConfiguration(
+      selectedTrip.id,
+      selectedDay.id,
+      { lat: startPoint.lat, lon: startPoint.lon, name: startPoint.name },
+      stopPoints.map(p => ({ lat: p.lat, lon: p.lon, name: p.name })),
+      { lat: endPoint.lat, lon: endPoint.lon, name: endPoint.name },
+      { profile: 'car', optimize: true }
+    )
+
+    try {
+      const { computed, changeResult, result } = await autoComputeRouteOnChange(
+        config,
+        autoComputeRoute,
+        { debounceMs: 1000, skipMinorChanges: false }
+      )
+
+      if (computed && result) {
+        setBreakdown(result)
+        console.log(`Auto-computed route: ${changeResult.changeDescription}`)
+      }
+    } catch (error) {
+      console.error('Auto-compute failed:', error)
+    }
+  }
+
   // Compute route breakdown
   const handleComputeBreakdown = async (optimize: boolean = false) => {
     if (!selectedTrip || !selectedDay || routePoints.length < 2) {
@@ -666,6 +739,17 @@ export default function RouteBreakdownPage() {
     }
   }
 
+  // Auto-compute when route points change
+  useEffect(() => {
+    if (autoComputeEnabled && routePoints.length >= 2) {
+      const timer = setTimeout(() => {
+        checkAndAutoCompute()
+      }, 2000) // Debounce for 2 seconds
+
+      return () => clearTimeout(timer)
+    }
+  }, [routePoints, selectedTrip, selectedDay, autoComputeEnabled])
+
   // Make functions available globally for debugging (after all functions are declared)
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -676,7 +760,9 @@ export default function RouteBreakdownPage() {
         listStops,
         selectedTrip,
         selectedDay,
-        computeDayRouteBreakdown
+        computeDayRouteBreakdown,
+        checkAndAutoCompute,
+        routeChangeDetector
       }
     }
   }, [selectedTrip, selectedDay]) // Update when trip/day changes
@@ -843,8 +929,25 @@ export default function RouteBreakdownPage() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-medium text-gray-900">Route Points ({routePoints.length})</h4>
-                      <div className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                        💾 Auto-saved to database
+                      <div className="flex items-center gap-2">
+                        <div className={`text-xs px-2 py-1 rounded-full ${
+                          routePersisted
+                            ? 'text-green-600 bg-green-50'
+                            : 'text-gray-600 bg-gray-50'
+                        }`}>
+                          {routePersisted ? '💾 Saved to database' : '📝 Not saved yet'}
+                        </div>
+                        <button
+                          onClick={() => setAutoComputeEnabled(!autoComputeEnabled)}
+                          className={`text-xs px-2 py-1 rounded-full border ${
+                            autoComputeEnabled
+                              ? 'text-blue-600 bg-blue-50 border-blue-200'
+                              : 'text-gray-600 bg-gray-50 border-gray-200'
+                          }`}
+                          title={autoComputeEnabled ? 'Auto-compute enabled' : 'Auto-compute disabled'}
+                        >
+                          {autoComputeEnabled ? '🔄 Auto' : '⏸️ Manual'}
+                        </button>
                       </div>
                     </div>
                     {routePoints
@@ -940,6 +1043,15 @@ export default function RouteBreakdownPage() {
                       <p className="text-sm text-gray-500 text-center">
                         Add 2+ stops to enable route optimization
                       </p>
+                    )}
+
+                    {/* Persistence Status */}
+                    {persistenceInfo && (
+                      <div className="mt-3 p-2 bg-gray-50 rounded-md">
+                        <div className="text-xs text-gray-600">
+                          <span className="font-medium">Route Status:</span> {persistenceInfo}
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
