@@ -17,6 +17,7 @@ import { getApiBase } from '@/lib/api/base'
 import { getDaysSummary, DayLocationsSummary } from '@/lib/api/days'
 import { getBulkDayActiveSummaries } from '@/lib/api/routing'
 import { MapPreview } from '@/components/places'
+import TripRouteMap from '@/components/trips/TripRouteMap'
 import type { Day } from '@/types'
 import { getUserSettings, updateUserSettings } from '@/lib/api/settings'
 import { checkHealth } from '@/lib/api/health'
@@ -55,7 +56,83 @@ const ErrorState = ({
   </div>
 )
 
+// Helper function to convert trip data to TripRouteMap format
+const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors: string[]) => {
+  if (!summaryDays || !Array.isArray(summaryDays) || !dayLocations) {
+    return []
+  }
 
+  return summaryDays
+    .sort((a, b) => a.seq - b.seq)
+    .map((day, idx) => {
+      const loc = dayLocations[day.id]
+      const coords = loc?.route_coordinates as [number, number][] | undefined
+
+      if (!coords || !coords.length) {
+        return null
+      }
+
+      // Create stops array from start, intermediate stops, and end
+      const stops = []
+
+      // Add start point
+      if (loc.start) {
+        stops.push({
+          lat: loc.start.lat,
+          lon: loc.start.lon,
+          name: loc.start.name || `Day ${day.seq} Start`
+        })
+      }
+
+      // Add intermediate stops (if any)
+      if (loc.stops && Array.isArray(loc.stops)) {
+        loc.stops.forEach((stop: any, stopIdx: number) => {
+          stops.push({
+            lat: stop.place?.lat ?? stop.lat,
+            lon: stop.place?.lon ?? stop.lon,
+            name: stop.place?.name || stop.name || `Stop ${stopIdx + 1}`
+          })
+        })
+      }
+
+      // Add end point
+      if (loc.end) {
+        stops.push({
+          lat: loc.end.lat,
+          lon: loc.end.lon,
+          name: loc.end.name || `Day ${day.seq} End`
+        })
+      }
+
+      // If no specific start/end but we have coordinates, create basic start/end from coordinates
+      if (stops.length === 0 && coords.length >= 2) {
+        const startCoord = coords[0]
+        const endCoord = coords[coords.length - 1]
+
+        stops.push({
+          lat: startCoord[1],
+          lon: startCoord[0],
+          name: `Day ${day.seq} Start`
+        })
+
+        if (startCoord[0] !== endCoord[0] || startCoord[1] !== endCoord[1]) {
+          stops.push({
+            lat: endCoord[1],
+            lon: endCoord[0],
+            name: `Day ${day.seq} End`
+          })
+        }
+      }
+
+      return {
+        id: day.id,
+        coordinates: coords,
+        color: dayColors[idx % dayColors.length],
+        stops: stops
+      }
+    })
+    .filter(Boolean)
+}
 
 export default function TripDetailPage({ params }: { params: { slug: string } }) {
   const [trip, setTrip] = useState<Trip | null>(null)
@@ -381,16 +458,13 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
             </div>
           </div>
           <div className="rounded-md overflow-hidden px-0 relative">
-            <MapPreview
+            <TripRouteMap
               height={fullMapHeight || 600}
-              routes={([...
-                summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
-                const loc = (dayLocations as any)[d.id]
-                const coords = loc?.route_coordinates as [number, number][] | undefined
-                if (!coords || !coords.length || (visibleDays[d.id] === false)) return null
-                return { id: d.id, coordinates: coords, color: dayColors[idx % dayColors.length] }
-              }).filter(Boolean) as {id:string, coordinates:[number,number][], color?: string}[])}
-              interactive
+              routes={convertToTripRouteData(summaryDays, dayLocations, dayColors)}
+              highlightRouteId={hoverDayId}
+              visibleRoutes={visibleDays}
+              interactive={true}
+              className="w-full"
             />
             {/* Overlay legend + toggles + permalink */}
             <div className="absolute bottom-3 left-3 right-3 bg-white/85 backdrop-blur-sm rounded shadow p-2 text-xs text-gray-700 flex items-center gap-4 flex-wrap">
@@ -507,28 +581,13 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
           </CardHeader>
           <CardContent>
             {summaryDays.length > 0 ? (
-              <MapPreview
-                extraMarkers={[...summaryDays].sort((a,b)=>a.seq-b.seq).flatMap((d) => {
-                  const loc = (dayLocations as any)[d.id]
-                  const stops = (loc?.stops || []) as any[]
-                  return stops.map((s, idx) => ({
-                    id: `${d.id}:${s.id || s.place_id || idx}`,
-                    lat: s.place?.lat ?? s.lat,
-                    lon: s.place?.lon ?? s.lon,
-                    color: '#111827',
-                    label: [s.place?.name, s.place?.address].filter(Boolean).join(' — ')
-                  }))
-                })}
-                routes={[...summaryDays].sort((a,b)=>a.seq-b.seq).map((d, idx) => {
-                  const loc = (dayLocations as any)[d.id]
-                  const coords = loc?.route_coordinates as [number, number][] | undefined
-                  if (!coords || !coords.length) return null
-                  return { id: d.id, coordinates: coords, color: dayColors[idx % dayColors.length] }
-                }).filter(Boolean) as {id:string, coordinates:[number,number][], color?: string}[]}
+              <TripRouteMap
+                routes={convertToTripRouteData(summaryDays, dayLocations, dayColors)}
                 highlightRouteId={hoverDayId}
+                visibleRoutes={visibleDays}
                 height={280}
                 className="rounded-md overflow-hidden"
-                interactive
+                interactive={true}
               />
             ) : (
               <div className="text-sm text-gray-500">Routing unavailable yet. Set start/end for days to see total route.</div>
