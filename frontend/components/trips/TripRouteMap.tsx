@@ -22,6 +22,7 @@ interface TripRouteData {
   coordinates: [number, number][]
   color?: string
   stops?: TripRoutePoint[]
+  daySeq?: number // Day sequence number for labeling
 }
 
 interface TripRouteMapProps {
@@ -154,6 +155,8 @@ export default function TripRouteMap({
       visibleRoutesData.forEach((route, routeIndex) => {
         if (!route.stops || route.stops.length === 0) return
 
+        const daySeq = route.daySeq || (routeIndex + 1) // Use daySeq or fallback to index
+
         // Add markers for each stop in the route
         route.stops.forEach((stop, stopIndex) => {
           let type: 'start' | 'stop' | 'end'
@@ -162,15 +165,15 @@ export default function TripRouteMap({
 
           if (stopIndex === 0) {
             type = 'start'
-            label = 'S'
+            label = `${daySeq}:S`
             color = '#10b981' // Green for start
           } else if (stopIndex === route.stops!.length - 1) {
             type = 'end'
-            label = 'E'
+            label = `${daySeq}:E`
             color = '#ef4444' // Red for end
           } else {
             type = 'stop'
-            label = (stopIndex).toString()
+            label = `${daySeq}:${stopIndex}`
             color = '#3b82f6' // Blue for intermediate stops
           }
 
@@ -204,10 +207,16 @@ export default function TripRouteMap({
         // Create marker element
         const el = document.createElement('div')
         el.className = 'custom-trip-marker'
+
+        // Adjust size based on label length
+        const isLongLabel = markerData.label.length > 2
+        const markerSize = isLongLabel ? 40 : 30
+        const fontSize = isLongLabel ? 10 : 12
+
         el.style.cssText = `
           background-color: ${markerData.color};
-          width: 30px;
-          height: 30px;
+          width: ${markerSize}px;
+          height: ${markerSize}px;
           border-radius: 50%;
           border: 3px solid white;
           box-shadow: 0 2px 6px rgba(0,0,0,0.3);
@@ -216,10 +225,11 @@ export default function TripRouteMap({
           justify-content: center;
           color: white;
           font-weight: bold;
-          font-size: 12px;
+          font-size: ${fontSize}px;
           font-family: system-ui, -apple-system, sans-serif;
           cursor: pointer;
           z-index: 10;
+          line-height: 1;
         `
         el.textContent = markerData.label
 
