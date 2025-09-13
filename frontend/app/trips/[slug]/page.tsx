@@ -11,6 +11,7 @@ import { fetchWithAuth } from '@/lib/auth'
 import { MinimalDebugToggle } from '@/components/minimal-debug'
 import { TripDateActions } from '@/components/trips/trip-date-actions'
 import { DaysList } from '@/components/days'
+import TripDayManagement from '@/components/trips/TripDayManagement'
 import GenericModal from '@/components/ui/GenericModal'
 import { Trip, listTripsEnhanced } from '@/lib/api/trips'
 import { getApiBase } from '@/lib/api/base'
@@ -87,15 +88,22 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
           })
         }
 
-        // Add intermediate stops
+        // Add intermediate stops - check multiple possible data structures
         if (loc.stops && Array.isArray(loc.stops)) {
           loc.stops.forEach((stop: any, stopIdx: number) => {
-            stops.push({
-              lat: stop.place?.lat ?? stop.lat,
-              lon: stop.place?.lon ?? stop.lon,
-              name: stop.place?.name || stop.name || `Day ${day.seq} Stop ${stopIdx + 1}`,
-              type: 'stop'
-            })
+            // Handle different stop data structures
+            const stopLat = stop.place?.lat ?? stop.lat ?? stop.location?.lat
+            const stopLon = stop.place?.lon ?? stop.lon ?? stop.location?.lon
+            const stopName = stop.place?.name || stop.name || stop.location?.name || `Day ${day.seq} Stop ${stopIdx + 1}`
+
+            if (stopLat && stopLon) {
+              stops.push({
+                lat: stopLat,
+                lon: stopLon,
+                name: stopName,
+                type: 'stop'
+              })
+            }
           })
         }
 
@@ -123,7 +131,21 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
         })
 
         // Add intermediate points if route is long enough
-        if (coords.length > 10) {
+        if (coords.length > 20) {
+          const quarterIndex = Math.floor(coords.length / 4)
+          const midIndex = Math.floor(coords.length / 2)
+          const threeQuarterIndex = Math.floor((coords.length * 3) / 4)
+
+          [quarterIndex, midIndex, threeQuarterIndex].forEach((index, i) => {
+            const coord = coords[index]
+            stops.push({
+              lat: coord[1],
+              lon: coord[0],
+              name: `Day ${day.seq} Point ${i + 1}`,
+              type: 'stop'
+            })
+          })
+        } else if (coords.length > 10) {
           const midIndex = Math.floor(coords.length / 2)
           const midCoord = coords[midIndex]
           stops.push({
@@ -135,6 +157,28 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
         }
 
         // Add end if different from start
+        if (startCoord[0] !== endCoord[0] || startCoord[1] !== endCoord[1]) {
+          stops.push({
+            lat: endCoord[1],
+            lon: endCoord[0],
+            name: `Day ${day.seq} End`,
+            type: 'end'
+          })
+        }
+      }
+
+      // Strategy 3: Ensure we always have at least start and end
+      if (stops.length === 0) {
+        const startCoord = coords[0]
+        const endCoord = coords[coords.length - 1]
+
+        stops.push({
+          lat: startCoord[1],
+          lon: startCoord[0],
+          name: `Day ${day.seq} Start`,
+          type: 'start'
+        })
+
         if (startCoord[0] !== endCoord[0] || startCoord[1] !== endCoord[1]) {
           stops.push({
             lat: endCoord[1],
@@ -736,11 +780,10 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
             </div>
           </CardHeader>
           <CardContent>
-            <DaysList
+            <TripDayManagement
               trip={trip}
               className="max-w-7xl"
               prefilledLocations={dayLocations}
-              onDayClick={(day) => console.log('day clicked', day.id)}
               showCountrySuffix={showCountrySuffix}
             />
             <style jsx global>{`
