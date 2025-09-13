@@ -72,39 +72,45 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
         return null
       }
 
-      // Create stops array from start, intermediate stops, and end
+      // Create comprehensive stops array
       const stops = []
 
-      // Add start point
-      if (loc.start) {
-        stops.push({
-          lat: loc.start.lat,
-          lon: loc.start.lon,
-          name: loc.start.name || `Day ${day.seq} Start`
-        })
-      }
-
-      // Add intermediate stops (if any)
-      if (loc.stops && Array.isArray(loc.stops)) {
-        loc.stops.forEach((stop: any, stopIdx: number) => {
+      // Strategy 1: Use explicit start/stops/end if available
+      if (loc.start || loc.end || (loc.stops && loc.stops.length > 0)) {
+        // Add start point
+        if (loc.start) {
           stops.push({
-            lat: stop.place?.lat ?? stop.lat,
-            lon: stop.place?.lon ?? stop.lon,
-            name: stop.place?.name || stop.name || `Stop ${stopIdx + 1}`
+            lat: loc.start.lat,
+            lon: loc.start.lon,
+            name: loc.start.name || `Day ${day.seq} Start`,
+            type: 'start'
           })
-        })
+        }
+
+        // Add intermediate stops
+        if (loc.stops && Array.isArray(loc.stops)) {
+          loc.stops.forEach((stop: any, stopIdx: number) => {
+            stops.push({
+              lat: stop.place?.lat ?? stop.lat,
+              lon: stop.place?.lon ?? stop.lon,
+              name: stop.place?.name || stop.name || `Day ${day.seq} Stop ${stopIdx + 1}`,
+              type: 'stop'
+            })
+          })
+        }
+
+        // Add end point
+        if (loc.end) {
+          stops.push({
+            lat: loc.end.lat,
+            lon: loc.end.lon,
+            name: loc.end.name || `Day ${day.seq} End`,
+            type: 'end'
+          })
+        }
       }
 
-      // Add end point
-      if (loc.end) {
-        stops.push({
-          lat: loc.end.lat,
-          lon: loc.end.lon,
-          name: loc.end.name || `Day ${day.seq} End`
-        })
-      }
-
-      // If no specific start/end but we have coordinates, create basic start/end from coordinates
+      // Strategy 2: If no explicit points, create from route coordinates
       if (stops.length === 0 && coords.length >= 2) {
         const startCoord = coords[0]
         const endCoord = coords[coords.length - 1]
@@ -112,14 +118,29 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
         stops.push({
           lat: startCoord[1],
           lon: startCoord[0],
-          name: `Day ${day.seq} Start`
+          name: `Day ${day.seq} Start`,
+          type: 'start'
         })
 
+        // Add intermediate points if route is long enough
+        if (coords.length > 10) {
+          const midIndex = Math.floor(coords.length / 2)
+          const midCoord = coords[midIndex]
+          stops.push({
+            lat: midCoord[1],
+            lon: midCoord[0],
+            name: `Day ${day.seq} Midpoint`,
+            type: 'stop'
+          })
+        }
+
+        // Add end if different from start
         if (startCoord[0] !== endCoord[0] || startCoord[1] !== endCoord[1]) {
           stops.push({
             lat: endCoord[1],
             lon: endCoord[0],
-            name: `Day ${day.seq} End`
+            name: `Day ${day.seq} End`,
+            type: 'end'
           })
         }
       }
@@ -128,7 +149,8 @@ const convertToTripRouteData = (summaryDays: any[], dayLocations: any, dayColors
         id: day.id,
         coordinates: coords,
         color: dayColors[idx % dayColors.length],
-        stops: stops
+        stops: stops,
+        daySeq: day.seq
       }
     })
     .filter(Boolean)
