@@ -81,7 +81,7 @@ export default function TripDayManagement({
     const loadDayRoutePoints = async () => {
       try {
         // Load stops for the day
-        const stopsResponse = await listStops(trip.id, selectedDay.id)
+        const stopsResponse = await listStops(trip.id, selectedDay.id, { includePlaces: true })
         const stops = stopsResponse.data || []
 
         // Convert stops to route points
@@ -356,10 +356,39 @@ export default function TripDayManagement({
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="text-sm text-gray-600">
-                  {dayLoc?.start && dayLoc?.end ? (
-                    <div>
-                      <div className="truncate">📍 {dayLoc.start.name}</div>
-                      <div className="truncate">🏁 {dayLoc.end.name}</div>
+                  {dayLoc?.start || dayLoc?.end || (dayLoc?.stops && dayLoc.stops.length > 0) ? (
+                    <div className="space-y-1">
+                      {/* Start point */}
+                      {dayLoc.start && (
+                        <div className="truncate">📍 {dayLoc.start.name}</div>
+                      )}
+
+                      {/* Intermediate stops */}
+                      {dayLoc.stops && dayLoc.stops.length > 0 && (
+                        <div className="space-y-1">
+                          {dayLoc.stops.slice(0, 3).map((stop: any, index: number) => {
+                            // Handle different stop data structures
+                            const stopName = stop.place?.name || stop.name || stop.location?.name || `Stop ${index + 1}`
+                            return (
+                              <div key={stop.id || index} className="truncate text-blue-600">
+                                🔵 {stopName}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* End point */}
+                      {dayLoc.end && (
+                        <div className="truncate">🏁 {dayLoc.end.name}</div>
+                      )}
+
+                      {/* Show count if there are many stops */}
+                      {dayLoc.stops && dayLoc.stops.length > 3 && (
+                        <div className="text-xs text-gray-500 italic">
+                          +{dayLoc.stops.length - 3} more stops...
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-gray-400">No route planned</div>
