@@ -169,11 +169,14 @@ function convertToTripRouteData(summaryDays: any[], dayLocations: any, dayColors
 
         // Add intermediate points if route is long enough
         if (coords.length > 20) {
-          const quarterIndex = Math.floor(coords.length / 4)
-          const midIndex = Math.floor(coords.length / 2)
-          const threeQuarterIndex = Math.floor((coords.length * 3) / 4)
+          // Calculate indices for intermediate points
+          const indices = [
+            Math.floor(coords.length / 4),      // quarter
+            Math.floor(coords.length / 2),      // mid
+            Math.floor((coords.length * 3) / 4) // three-quarter
+          ]
 
-          [quarterIndex, midIndex, threeQuarterIndex].forEach((index, i) => {
+          indices.forEach((index, i) => {
             const coord = coords[index]
             stops.push({
               lat: coord[1],
