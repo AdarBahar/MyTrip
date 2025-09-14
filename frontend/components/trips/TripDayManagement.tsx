@@ -313,6 +313,10 @@ export default function TripDayManagement({
         {sortedDays.map((day) => {
           const dayLoc = dayLocations[day.id]
           const hasRoute = dayLoc && typeof dayLoc.route_total_km === 'number'
+
+          // Check for stops in different possible locations
+          const stops = dayLoc?.stops || []
+          const hasStops = stops.length > 0
           
           return (
             <Card 
@@ -356,19 +360,21 @@ export default function TripDayManagement({
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="text-sm text-gray-600">
-                  {dayLoc?.start || dayLoc?.end || (dayLoc?.stops && dayLoc.stops.length > 0) ? (
+                  {dayLoc?.start || dayLoc?.end || hasStops ? (
                     <div className="space-y-1">
                       {/* Start point */}
-                      {dayLoc.start && (
+                      {dayLoc?.start && (
                         <div className="truncate">📍 {dayLoc.start.name}</div>
                       )}
 
                       {/* Intermediate stops */}
-                      {dayLoc.stops && dayLoc.stops.length > 0 && (
+                      {hasStops && (
                         <div className="space-y-1">
-                          {dayLoc.stops.slice(0, 3).map((stop: any, index: number) => {
+                          {stops.slice(0, 3).map((stop: any, index: number) => {
                             // Handle different stop data structures
-                            const stopName = stop.place?.name || stop.name || stop.location?.name || `Stop ${index + 1}`
+                            const stopName = stop.place?.name || stop.name || stop.location?.name ||
+                                           (stop.notes && stop.notes !== 'Added via route breakdown on 9/11/2025' && stop.notes !== 'Added via route breakdown on 9/12/2025' ? stop.notes : null) ||
+                                           `Via Stop ${stop.seq || index + 1}`
                             return (
                               <div key={stop.id || index} className="truncate text-blue-600">
                                 🔵 {stopName}
@@ -379,14 +385,21 @@ export default function TripDayManagement({
                       )}
 
                       {/* End point */}
-                      {dayLoc.end && (
+                      {dayLoc?.end && (
                         <div className="truncate">🏁 {dayLoc.end.name}</div>
                       )}
 
                       {/* Show count if there are many stops */}
-                      {dayLoc.stops && dayLoc.stops.length > 3 && (
+                      {stops.length > 3 && (
                         <div className="text-xs text-gray-500 italic">
-                          +{dayLoc.stops.length - 3} more stops...
+                          +{stops.length - 3} more stops...
+                        </div>
+                      )}
+
+                      {/* Debug info - temporary */}
+                      {process.env.NODE_ENV === 'development' && (
+                        <div className="text-xs text-red-500">
+                          Debug: {stops.length} via stops found
                         </div>
                       )}
                     </div>

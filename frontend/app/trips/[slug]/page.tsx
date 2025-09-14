@@ -563,7 +563,9 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
         const mapWithStops = { ...map }
         for (const [dayId, stops] of Object.entries(stopsMap)) {
           if (mapWithStops[dayId]) {
-            mapWithStops[dayId].stops = stops
+            // Filter out start and end stops, only include 'via' stops for display
+            const viaStops = stops.filter((stop: any) => stop.kind === 'via')
+            mapWithStops[dayId].stops = viaStops
           }
         }
 
