@@ -382,8 +382,20 @@ async def list_stops(
 
     stops = query.all()
 
+    # If include_place is True, ensure all places are loaded
+    if include_place:
+        # Get all unique place_ids from stops
+        place_ids = [stop.place_id for stop in stops if stop.place_id]
+        if place_ids:
+            # Load all places in one query
+            places = db.query(Place).filter(Place.id.in_(place_ids)).all()
+            places_dict = {place.id: place for place in places}
 
-    
+            # Attach places to stops
+            for stop in stops:
+                if stop.place_id and stop.place_id in places_dict:
+                    stop.place = places_dict[stop.place_id]
+
     # Convert to response format
     stops_data = []
     for stop in stops:
@@ -418,8 +430,8 @@ async def list_stops(
                     'lon': float(stop.place.lon),
                     'meta': stop.place.meta
                 }
-            else:
-                # Place not loaded, let's fetch it manually
+            elif stop.place_id:
+                # Place not loaded via joinedload, fetch it manually
                 place = db.query(Place).filter(Place.id == stop.place_id).first()
                 if place:
                     stop_dict['place'] = {
@@ -430,6 +442,12 @@ async def list_stops(
                         'lon': float(place.lon),
                         'meta': place.meta
                     }
+                else:
+                    # Place not found, set to None
+                    stop_dict['place'] = None
+            else:
+                # No place_id, set to None
+                stop_dict['place'] = None
 
         stops_data.append(stop_dict)
 
