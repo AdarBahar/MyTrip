@@ -396,12 +396,7 @@ export default function TripDayManagement({
                         </div>
                       )}
 
-                      {/* Debug info - temporary */}
-                      {process.env.NODE_ENV === 'development' && (
-                        <div className="text-xs text-red-500">
-                          Debug: {stops.length} via stops found
-                        </div>
-                      )}
+
                     </div>
                   ) : (
                     <div className="text-gray-400">No route planned</div>
