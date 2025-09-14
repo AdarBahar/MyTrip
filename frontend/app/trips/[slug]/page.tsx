@@ -269,11 +269,10 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
   }, [isFullMap])
   const { toast } = useToast()
 
-  // Function to load stops for all days
+  // Function to load stops for all days (pure function without state updates)
   const loadStopsForAllDays = async (tripId: string, days: Day[]) => {
     if (!days.length) return {}
 
-    setStopsLoading(true)
     const stopsMap: Record<string, any[]> = {}
 
     try {
@@ -291,8 +290,6 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
       )
     } catch (error) {
       console.error('Error loading stops for days:', error)
-    } finally {
-      setStopsLoading(false)
     }
 
     return stopsMap
@@ -419,30 +416,38 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
     const onUpdate = (e: any) => {
       const { dayId, loc } = e.detail || {}
       if (!dayId || !loc) return
-      setDayLocations(prev => {
-        const next = { ...prev, [dayId]: {
-          start: loc.start || null,
-          end: loc.end || null,
-          route_total_km: loc.route_total_km ?? undefined,
-          route_total_min: loc.route_total_min ?? undefined,
-          route_coordinates: loc.route_coordinates ?? undefined,
-        } }
-        // Recompute totals and combined coords
-        let kmSum = 0; let minSum = 0; const combined: [number, number][] = []
-        for (const d of [...summaryDays].sort((a,b)=>a.seq-b.seq)) {
-          const l: any = (next as any)[d.id]
-          if (l) {
-            if (typeof l.route_total_km === 'number') kmSum += l.route_total_km
-            if (typeof l.route_total_min === 'number') minSum += l.route_total_min
-            if (l.route_coordinates && l.route_coordinates.length) combined.push(...l.route_coordinates)
+
+      // Use setTimeout to avoid state updates during render
+      setTimeout(() => {
+        setDayLocations(prev => {
+          const next = { ...prev, [dayId]: {
+            start: loc.start || null,
+            end: loc.end || null,
+            route_total_km: loc.route_total_km ?? undefined,
+            route_total_min: loc.route_total_min ?? undefined,
+            route_coordinates: loc.route_coordinates ?? undefined,
+          } }
+
+          // Recompute totals and combined coords
+          let kmSum = 0; let minSum = 0; const combined: [number, number][] = []
+          for (const d of [...summaryDays].sort((a,b)=>a.seq-b.seq)) {
+            const l: any = (next as any)[d.id]
+            if (l) {
+              if (typeof l.route_total_km === 'number') kmSum += l.route_total_km
+              if (typeof l.route_total_min === 'number') minSum += l.route_total_min
+              if (l.route_coordinates && l.route_coordinates.length) combined.push(...l.route_coordinates)
+            }
           }
-        }
-        setTotalRouteKm(combined.length ? kmSum : null)
-        setTotalRouteMin(combined.length ? minSum : null)
-        setTripRouteCoords(combined)
-        setVisibleDays(v => ({ ...v, [dayId]: !!(next[dayId]?.route_coordinates && next[dayId]!.route_coordinates!.length) }))
-        return next
-      })
+
+          // Batch all state updates
+          setTotalRouteKm(combined.length ? kmSum : null)
+          setTotalRouteMin(combined.length ? minSum : null)
+          setTripRouteCoords(combined)
+          setVisibleDays(v => ({ ...v, [dayId]: !!(next[dayId]?.route_coordinates && next[dayId]!.route_coordinates!.length) }))
+
+          return next
+        })
+      }, 0)
     }
     window.addEventListener('day-summary-updated', onUpdate as any)
     return () => window.removeEventListener('day-summary-updated', onUpdate as any)
@@ -547,7 +552,9 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
           }
         }
         // Load stops for all days and add to dayLocations
+        setStopsLoading(true)
         const stopsMap = await loadStopsForAllDays(foundTrip.id, summaryResp.days as Day[])
+        setStopsLoading(false)
 
         // Update dayLocations with stops data in one go
         const mapWithStops = { ...map }
@@ -924,24 +931,29 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
                   route_coordinates: s.route_coordinates ?? undefined,
                 }
               }
-              // Update local state and totals
-              setDayLocations(prev => {
-                const next = { ...prev, [activeDayId]: loc }
-                let kmSum = 0; let minSum = 0; const combined: [number, number][] = []
-                for (const d of [...summaryDays].sort((a,b)=>a.seq-b.seq)) {
-                  const l: any = (next as any)[d.id]
-                  if (l) {
-                    if (typeof l.route_total_km === 'number') kmSum += l.route_total_km
-                    if (typeof l.route_total_min === 'number') minSum += l.route_total_min
-                    if (l.route_coordinates && l.route_coordinates.length) combined.push(...l.route_coordinates)
+              // Update local state and totals (batch updates to avoid render issues)
+              setTimeout(() => {
+                setDayLocations(prev => {
+                  const next = { ...prev, [activeDayId]: loc }
+                  let kmSum = 0; let minSum = 0; const combined: [number, number][] = []
+                  for (const d of [...summaryDays].sort((a,b)=>a.seq-b.seq)) {
+                    const l: any = (next as any)[d.id]
+                    if (l) {
+                      if (typeof l.route_total_km === 'number') kmSum += l.route_total_km
+                      if (typeof l.route_total_min === 'number') minSum += l.route_total_min
+                      if (l.route_coordinates && l.route_coordinates.length) combined.push(...l.route_coordinates)
+                    }
                   }
-                }
-                setTotalRouteKm(combined.length ? kmSum : null)
-                setTotalRouteMin(combined.length ? minSum : null)
-                setTripRouteCoords(combined)
-                setVisibleDays(v => ({ ...v, [activeDayId]: !!(loc.route_coordinates && loc.route_coordinates.length) }))
-                return next
-              })
+
+                  // Batch all state updates together
+                  setTotalRouteKm(combined.length ? kmSum : null)
+                  setTotalRouteMin(combined.length ? minSum : null)
+                  setTripRouteCoords(combined)
+                  setVisibleDays(v => ({ ...v, [activeDayId]: !!(loc.route_coordinates && loc.route_coordinates.length) }))
+
+                  return next
+                })
+              }, 0)
             } catch {}
           }}
         />
