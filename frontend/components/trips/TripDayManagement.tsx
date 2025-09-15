@@ -72,71 +72,7 @@ export default function TripDayManagement({
 
 
 
-  // Load route points for selected day
-  useEffect(() => {
-    if (!selectedDay) return
 
-    const loadDayRoutePoints = async () => {
-      try {
-        // Load stops for the day
-        const stopsResponse = await listStops(trip.id, selectedDay.id, { includePlaces: true })
-        const stops = stopsResponse.data || []
-
-        // Convert stops to route points
-        const points: RoutePointType[] = []
-        
-        // Add start point from day locations
-        const dayLoc = dayLocations[selectedDay.id]
-        if (dayLoc?.start) {
-          points.push({
-            id: `start-${selectedDay.id}`,
-            name: dayLoc.start.name || 'Start',
-            lat: dayLoc.start.lat,
-            lon: dayLoc.start.lon,
-            type: 'start',
-            fixed: false
-          })
-        }
-
-        // Add intermediate stops
-        stops.forEach((stop: StopWithPlace, index: number) => {
-          if (stop.place) {
-            points.push({
-              id: stop.id,
-              name: stop.place.name,
-              lat: stop.place.lat,
-              lon: stop.place.lon,
-              type: 'stop',
-              fixed: false
-            })
-          }
-        })
-
-        // Add end point from day locations
-        if (dayLoc?.end) {
-          points.push({
-            id: `end-${selectedDay.id}`,
-            name: dayLoc.end.name || 'End',
-            lat: dayLoc.end.lat,
-            lon: dayLoc.end.lon,
-            type: 'end',
-            fixed: false
-          })
-        }
-
-        setRoutePoints(points)
-      } catch (error) {
-        console.error('Error loading day route points:', error)
-        toast({
-          title: 'Error',
-          description: 'Failed to load route points for this day',
-          variant: 'destructive'
-        })
-      }
-    }
-
-    loadDayRoutePoints()
-  }, [selectedDay, dayLocations, toast])
 
   const handleCreateDay = async () => {
     if (!newDaySeq.trim()) return
@@ -214,7 +150,7 @@ export default function TripDayManagement({
       await createStop({
         day_id: selectedDay.id,
         place_id: placeId.id,
-        seq: routePoints.filter(p => p.type === 'stop').length + 1
+        seq: 999 // Will be auto-assigned by backend
       })
 
       // Refresh route points
@@ -251,7 +187,7 @@ export default function TripDayManagement({
         geometry: result.geojson
       }
       
-      setRouteBreakdown(routeData)
+      // Route computed successfully
       
       toast({
         title: 'Route computed',
@@ -266,17 +202,7 @@ export default function TripDayManagement({
     }
   }
 
-  const routePointsActions: RoutePointsActions = {
-    onAddPoint: handleAddPoint,
-    onRemovePoint: (pointId: string) => {
-      // Remove point logic
-      console.log('Remove point:', pointId)
-    },
-    onToggleFixed: (pointId: string, fixed: boolean) => {
-      // Toggle fixed logic
-      console.log('Toggle fixed:', pointId, fixed)
-    }
-  }
+
 
   if (loading) {
     return (
@@ -484,7 +410,7 @@ export default function TripDayManagement({
           lon: selectedPlace.lon,
           address: selectedPlace.address
         } : null}
-        options={createRoutePointOptions(routePoints)}
+        options={createRoutePointOptions([])}
         showSelectedItemDetails={true}
         selectedItemLabel="Selected"
       />
