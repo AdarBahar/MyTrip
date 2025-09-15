@@ -38,7 +38,7 @@ export interface TripListResponse {
 
 export interface TripCardProps {
   trip: Trip
-  onDelete: (tripId: string) => Promise<void>
+  onDelete: (tripId: string, success: boolean) => void
   onEdit?: (trip: Trip) => void
   loading?: boolean
 }

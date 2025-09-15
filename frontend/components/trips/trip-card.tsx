@@ -40,9 +40,23 @@ export const TripCard: React.FC<TripCardProps> = ({
 
     setIsDeleting(true)
     try {
-      await onDelete(trip.id)
+      // TODO: Call actual delete API
+      // const success = await deleteTrip(trip.id)
+      const success = true // Placeholder - replace with actual API call
+
+      onDelete(trip.id, success)
+
+      if (success) {
+        // TODO: Show success toast
+        console.log('Trip deleted successfully')
+      } else {
+        // TODO: Show error toast
+        console.error('Failed to delete trip')
+      }
     } catch (error) {
       console.error('Error deleting trip:', error)
+      onDelete(trip.id, false)
+      // TODO: Show error toast
     } finally {
       setIsDeleting(false)
     }
