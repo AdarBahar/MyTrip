@@ -562,12 +562,15 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
         // Update dayLocations with stops data in one go
         const mapWithStops = { ...map }
         for (const [dayId, stops] of Object.entries(stopsMap)) {
+          console.log(`Processing stops for day ${dayId}:`, stops)
           if (mapWithStops[dayId]) {
             // Filter out start and end stops, only include 'via' stops for display
             const viaStops = stops.filter((stop: any) => stop.kind === 'via')
+            console.log(`Via stops for day ${dayId}:`, viaStops)
             mapWithStops[dayId].stops = viaStops
           }
         }
+        console.log('Final mapWithStops:', mapWithStops)
 
         // Set all state in one batch
         setSummaryDays(summaryResp.days as Day[])
