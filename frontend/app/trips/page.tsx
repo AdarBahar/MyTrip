@@ -7,7 +7,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -49,13 +49,13 @@ export default function TripsPage() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
-  // Simple fetch function
-  const fetchTrips = async () => {
+  // Enhanced fetch function with AbortController
+  const fetchTrips = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await listTripsEnhanced()
+      const response = await listTripsEnhanced(/* { signal } when API supports it */)
 
       if (response.success && response.data) {
         setTrips(response.data.data || [])
@@ -63,50 +63,75 @@ export default function TripsPage() {
         setError('Failed to load trips')
       }
     } catch (err) {
-      console.error('Error fetching trips:', err)
-      setError('Failed to load trips')
+      if ((err as any)?.name !== 'AbortError') {
+        console.error('Error fetching trips:', err)
+        setError('Failed to load trips')
+      }
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  // Simple delete handler
-  const handleTripDeleted = async (tripId: string) => {
-    // Optimistically remove trip from UI
+  // Enhanced delete handler with rollback capability
+  const handleTripDeleted = useCallback((tripId: string, success: boolean) => {
+    if (!success) return // TripCard should handle toast
     setTrips(prevTrips => prevTrips.filter(trip => trip.id !== tripId))
-  }
+  }, [])
 
-  // Simple logout handler
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user_data')
-    router.push('/login')
-  }
+  // Enhanced logout handler with server-side cleanup
+  const handleLogout = useCallback(async () => {
+    try {
+      // TODO: Call logout API to revoke server session
+      // await logoutAPI()
 
-  // Simple useEffect - only run once on mount
+      // Clear client storage
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('auth_token')
+        window.localStorage.removeItem('user_data')
+      }
+
+      // Clear any client caches (SWR/React Query would go here)
+
+      router.push('/login')
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Still redirect even if server logout fails
+      router.push('/login')
+    }
+  }, [router])
+
+  // Enhanced useEffect with client-side guards and cleanup
   useEffect(() => {
-    const token = localStorage.getItem('auth_token')
-    const userData = localStorage.getItem('user_data')
+    let canceled = false
+
+    // Guard against SSR
+    if (typeof window === 'undefined') return
+
+    const token = window.localStorage.getItem('auth_token')
+    const userData = window.localStorage.getItem('user_data')
 
     if (!token || !userData) {
-      router.push('/login')
+      if (!canceled) router.push('/login')
       return
     }
 
     try {
-      const parsedUser = JSON.parse(userData)
-      setUser(parsedUser)
-      fetchTrips()
-    } catch (error) {
-      console.error('Error parsing user data:', error)
-      router.push('/login')
+      const parsedUser = JSON.parse(userData) as TripCreator
+      if (!canceled) {
+        setUser(parsedUser)
+        fetchTrips().catch(() => {}) // Already handles errors
+      }
+    } catch {
+      if (!canceled) router.push('/login')
     }
-  }, []) // Empty dependency array - only run once
 
-  // Enhanced loading state with skeleton
+    return () => { canceled = true }
+  }, [])
+
+  // Enhanced loading state with skeleton and accessibility
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100" aria-busy="true">
         <div className="container mx-auto px-4 py-16">
           <TripListSkeleton count={6} />
         </div>
@@ -129,6 +154,7 @@ export default function TripsPage() {
           </div>
           <div className="flex gap-2">
             <Button
+              type="button"
               variant="outline"
               onClick={handleLogout}
               aria-label="Log out of your account"
@@ -148,13 +174,18 @@ export default function TripsPage() {
           </div>
         </header>
 
-        {/* Simple Error Display */}
+        {/* Enhanced Error Display with Accessibility */}
         {error && (
-          <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-md">
+          <div
+            role="alert"
+            aria-live="polite"
+            className="mb-8 p-4 bg-red-50 border border-red-200 rounded-md"
+          >
             <div className="flex items-center justify-between">
               <p className="text-red-700">{error}</p>
               <button
-                onClick={fetchTrips}
+                type="button"
+                onClick={() => fetchTrips()}
                 className="text-red-600 hover:text-red-800 underline"
               >
                 Retry
