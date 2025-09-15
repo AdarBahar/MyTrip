@@ -318,14 +318,7 @@ export default function TripDayManagement({
           const stops = dayLoc?.stops || []
           const hasStops = stops.length > 0
 
-          // Debug logging
-          console.log(`Day ${day.seq} (${day.id}) debug:`, {
-            dayLoc,
-            hasStops,
-            stopsCount: stops.length,
-            stops: stops,
-            dayLocKeys: dayLoc ? Object.keys(dayLoc) : 'no dayLoc'
-          })
+
           
           return (
             <Card 
@@ -419,21 +412,9 @@ export default function TripDayManagement({
                       </div>
                     )}
 
-                    {/* Debug info */}
-                    <div className="text-xs text-red-500 bg-red-50 p-2 rounded mt-2">
-                      Debug: {stops.length} stops, hasStops: {hasStops.toString()}
-                      {dayLoc && <div>dayLoc keys: {Object.keys(dayLoc).join(', ')}</div>}
-                    </div>
                   </div>
                 ) : (
-                  <div className="text-gray-400 text-center py-4">
-                    No route planned
-                    {dayLoc && (
-                      <div className="text-xs text-red-500 mt-1">
-                        Debug: dayLoc keys: {Object.keys(dayLoc).join(', ')}
-                      </div>
-                    )}
-                  </div>
+                  <div className="text-gray-400 text-center py-4">No route planned</div>
                 )}
               </CardContent>
             </Card>
