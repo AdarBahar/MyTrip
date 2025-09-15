@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.auth_jwt import get_current_user_jwt
 from app.models.user import User
 from app.models.trip import Trip, TripStatus, TripStatus
 from app.schemas.trip import (
@@ -142,7 +143,7 @@ logger = logging.getLogger(__name__)
 )
 async def create_trip(
     trip_data: TripCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db)
 ):
     """
@@ -349,7 +350,7 @@ async def list_trips(
     page: int = Query(1, ge=1, description="Page number (starts at 1)"),
     size: int = Query(20, ge=1, le=100, description="Number of trips per page"),
     format: Optional[str] = Query("modern", regex="^(legacy|modern)$", description="Response format: 'legacy' or 'modern'"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db)
 ):
     """
@@ -448,6 +449,7 @@ async def list_trips(
 @router.get("/{trip_id}", response_model=TripSchema)
 async def get_trip(
     trip_id: str,
+    current_user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db)
 ):
     """Get a specific trip"""
@@ -459,6 +461,10 @@ async def get_trip(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
+    # Check if user has access to this trip
+    if trip.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     return trip
 
 
@@ -466,7 +472,7 @@ async def get_trip(
 async def update_trip(
     trip_id: str,
     trip_data: TripUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db)
 ):
     """
@@ -548,7 +554,7 @@ async def publish_trip(
 @router.delete("/{trip_id}", status_code=204)
 async def delete_trip(
     trip_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db)
 ):
     """
@@ -585,7 +591,7 @@ async def delete_trip(
 @router.delete("/bulk", response_model=BulkOperationResult)
 async def bulk_delete_trips(
     request: BulkDeleteRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db)
 ):
     """
@@ -638,7 +644,7 @@ async def bulk_delete_trips(
 @router.patch("/bulk", response_model=BulkOperationResult)
 async def bulk_update_trips(
     request: BulkUpdateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db)
 ):
     """
