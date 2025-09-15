@@ -14,8 +14,6 @@ import { useDays } from '@/hooks/use-days'
 import { useToast } from '@/components/ui/use-toast'
 import { listStops, createStop, type StopWithPlace } from '@/lib/api/stops'
 import { computeDayRoute } from '@/lib/api/routing'
-import RoutePointsPanel, { type RoutePoint as RoutePointType, type RoutePointsActions } from '@/components/ui/RoutePointsPanel'
-import RouteResultsPanel, { type RouteResultsData } from '@/components/ui/RouteResultsPanel'
 import PointTypeSelectionModal, { DEFAULT_ROUTE_POINT_TYPES, createRoutePointOptions } from '@/components/ui/PointTypeSelectionModal'
 import GenericModal, { FormModal } from '@/components/ui/GenericModal'
 import PlacesSearch from '@/components/ui/PlacesSearch'
@@ -52,8 +50,6 @@ export default function TripDayManagement({
 
   const { toast } = useToast()
   const [selectedDay, setSelectedDay] = useState<Day | null>(null)
-  const [routePoints, setRoutePoints] = useState<RoutePointType[]>([])
-  const [routeBreakdown, setRouteBreakdown] = useState<RouteResultsData | null>(null)
   const [showAddPoint, setShowAddPoint] = useState(false)
   const [showPointTypeSelection, setShowPointTypeSelection] = useState(false)
   const [selectedPlace, setSelectedPlace] = useState<any>(null)
@@ -325,12 +321,9 @@ export default function TripDayManagement({
 
           
           return (
-            <Card 
-              key={day.id} 
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                selectedDay?.id === day.id ? 'ring-2 ring-blue-500' : ''
-              }`}
-              onClick={() => setSelectedDay(day)}
+            <Card
+              key={day.id}
+              className="transition-all hover:shadow-md"
             >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -341,6 +334,30 @@ export default function TripDayManagement({
                         {Math.round(dayLoc.route_total_km!)} km
                       </Badge>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedDay(day)
+                        setShowAddPoint(true)
+                      }}
+                      className="text-blue-600 hover:text-blue-700"
+                    >
+                      Add Point
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedDay(day)
+                        handleComputeRoute()
+                      }}
+                      className="text-green-600 hover:text-green-700"
+                    >
+                      Compute Route
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -381,7 +398,7 @@ export default function TripDayManagement({
                     )}
 
                     {/* Intermediate Stops */}
-                    {hasStops && stops.slice(0, 3).map((stop: any, index: number) => {
+                    {hasStops && stops.map((stop: any, index: number) => {
                       const stopName = stop.place?.name || stop.name || stop.location?.name ||
                                      (stop.notes && !stop.notes.includes('Added via route breakdown') ? stop.notes : null) ||
                                      `Via Stop ${stop.seq || index + 1}`
@@ -409,12 +426,7 @@ export default function TripDayManagement({
                       </div>
                     )}
 
-                    {/* Show count if there are many stops */}
-                    {stops.length > 3 && (
-                      <div className="text-xs text-gray-500 italic text-center py-1">
-                        +{stops.length - 3} more stops...
-                      </div>
-                    )}
+
 
                   </div>
                 ) : (
@@ -440,39 +452,7 @@ export default function TripDayManagement({
         </Card>
       </div>
 
-      {/* Selected Day Management */}
-      {selectedDay && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* Route Points Panel */}
-          <RoutePointsPanel
-            title={`Day ${selectedDay.seq} Route Points`}
-            points={routePoints}
-            loading={false}
-            actions={routePointsActions}
-            primaryAction={{
-              label: 'Compute Route',
-              onClick: handleComputeRoute
-            }}
-            showDebugButton={false}
-            showFixToggle={true}
-            sortPoints={true}
-          />
 
-          {/* Route Results Panel */}
-          {routeBreakdown && (
-            <RouteResultsPanel
-              title={`Day ${selectedDay.seq} Route`}
-              data={routeBreakdown}
-              showMap={true}
-              mapHeight={300}
-              showSummary={true}
-              showOptimizationResults={false}
-              showSegments={true}
-              showPersistenceInfo={false}
-            />
-          )}
-        </div>
-      )}
 
       {/* Modals */}
       <GenericModal
