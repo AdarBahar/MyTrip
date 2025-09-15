@@ -7,6 +7,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Calendar, MapPin, MoreVertical, Edit, Trash2 } from 'lucide-react'
 import { Trip, TripCardProps } from '@/types/trip'
 import { formatTripDate, formatRelativeTime } from '@/lib/utils/date-format'
@@ -26,6 +27,7 @@ export const TripCard: React.FC<TripCardProps> = ({
 }) => {
   const [isDeleting, setIsDeleting] = useState(false)
   const [showActions, setShowActions] = useState(false)
+  const router = useRouter()
 
   const handleDelete = async () => {
     if (isDeleting) return
@@ -46,10 +48,23 @@ export const TripCard: React.FC<TripCardProps> = ({
     }
   }
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on actions menu or its children
+    if ((e.target as HTMLElement).closest('.actions-menu')) {
+      return
+    }
+
+    // Navigate to trip details page
+    router.push(`/trips/${trip.slug}`)
+  }
+
   const statusConfig = statusStyles[trip.status]
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+    <div
+      className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      onClick={handleCardClick}
+    >
       <div className="p-6">
         {/* Header */}
         <div className="flex justify-between items-start mb-3">
@@ -66,9 +81,12 @@ export const TripCard: React.FC<TripCardProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="relative">
+          <div className="relative actions-menu">
             <button
-              onClick={() => setShowActions(!showActions)}
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowActions(!showActions)
+              }}
               className="p-1 rounded hover:bg-gray-100"
             >
               <MoreVertical className="h-5 w-5 text-gray-500" />
@@ -79,7 +97,8 @@ export const TripCard: React.FC<TripCardProps> = ({
                 <div className="py-1">
                   {onEdit && (
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation()
                         setShowActions(false)
                         onEdit(trip)
                       }}
@@ -91,7 +110,8 @@ export const TripCard: React.FC<TripCardProps> = ({
                   )}
 
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
                       setShowActions(false)
                       handleDelete()
                     }}
