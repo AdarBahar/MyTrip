@@ -317,6 +317,15 @@ export default function TripDayManagement({
           // Check for stops in different possible locations
           const stops = dayLoc?.stops || []
           const hasStops = stops.length > 0
+
+          // Debug logging
+          console.log(`Day ${day.seq} (${day.id}) debug:`, {
+            dayLoc,
+            hasStops,
+            stopsCount: stops.length,
+            stops: stops,
+            dayLocKeys: dayLoc ? Object.keys(dayLoc) : 'no dayLoc'
+          })
           
           return (
             <Card 
@@ -359,49 +368,73 @@ export default function TripDayManagement({
                 )}
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="text-sm text-gray-600">
-                  {dayLoc?.start || dayLoc?.end || hasStops ? (
-                    <div className="space-y-1">
-                      {/* Start point */}
-                      {dayLoc?.start && (
-                        <div className="truncate">📍 {dayLoc.start.name}</div>
-                      )}
-
-                      {/* Intermediate stops */}
-                      {hasStops && (
-                        <div className="space-y-1">
-                          {stops.slice(0, 3).map((stop: any, index: number) => {
-                            // Handle different stop data structures
-                            const stopName = stop.place?.name || stop.name || stop.location?.name ||
-                                           (stop.notes && stop.notes !== 'Added via route breakdown on 9/11/2025' && stop.notes !== 'Added via route breakdown on 9/12/2025' ? stop.notes : null) ||
-                                           `Via Stop ${stop.seq || index + 1}`
-                            return (
-                              <div key={stop.id || index} className="truncate text-blue-600">
-                                🔵 {stopName}
-                              </div>
-                            )
-                          })}
+                {/* Route Points Display - Using Route Breakdown Style */}
+                {dayLoc?.start || dayLoc?.end || hasStops ? (
+                  <div className="mt-4 space-y-2">
+                    {/* Start Point */}
+                    {dayLoc?.start && (
+                      <div className="flex items-center gap-3 p-2 bg-green-50 rounded-lg">
+                        <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold">
+                          S
                         </div>
-                      )}
-
-                      {/* End point */}
-                      {dayLoc?.end && (
-                        <div className="truncate">🏁 {dayLoc.end.name}</div>
-                      )}
-
-                      {/* Show count if there are many stops */}
-                      {stops.length > 3 && (
-                        <div className="text-xs text-gray-500 italic">
-                          +{stops.length - 3} more stops...
+                        <div className="flex-1">
+                          <div className="font-medium text-green-800 truncate">{dayLoc.start.name}</div>
                         </div>
-                      )}
+                      </div>
+                    )}
 
+                    {/* Intermediate Stops */}
+                    {hasStops && stops.slice(0, 3).map((stop: any, index: number) => {
+                      const stopName = stop.place?.name || stop.name || stop.location?.name ||
+                                     (stop.notes && !stop.notes.includes('Added via route breakdown') ? stop.notes : null) ||
+                                     `Via Stop ${stop.seq || index + 1}`
+                      return (
+                        <div key={stop.id || index} className="flex items-center gap-3 p-2 bg-blue-50 rounded-lg">
+                          <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-blue-800 truncate">{stopName}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
 
+                    {/* End Point */}
+                    {dayLoc?.end && (
+                      <div className="flex items-center gap-3 p-2 bg-red-50 rounded-lg">
+                        <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">
+                          E
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-red-800 truncate">{dayLoc.end.name}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Show count if there are many stops */}
+                    {stops.length > 3 && (
+                      <div className="text-xs text-gray-500 italic text-center py-1">
+                        +{stops.length - 3} more stops...
+                      </div>
+                    )}
+
+                    {/* Debug info */}
+                    <div className="text-xs text-red-500 bg-red-50 p-2 rounded mt-2">
+                      Debug: {stops.length} stops, hasStops: {hasStops.toString()}
+                      {dayLoc && <div>dayLoc keys: {Object.keys(dayLoc).join(', ')}</div>}
                     </div>
-                  ) : (
-                    <div className="text-gray-400">No route planned</div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-center py-4">
+                    No route planned
+                    {dayLoc && (
+                      <div className="text-xs text-red-500 mt-1">
+                        Debug: dayLoc keys: {Object.keys(dayLoc).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )
