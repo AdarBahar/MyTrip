@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.trip import Trip
 from app.models.day import Day
 from app.models.stop import Stop, StopType, StopKind
-from app.models.place import Place
+from app.models.place import Place as PlaceModel
 from app.schemas.stop import (
     StopCreate, StopUpdate, Stop as StopSchema, StopList,
     StopWithPlace, StopTypeInfo, StopReorder, StopBulkReorder,
@@ -388,7 +388,7 @@ async def list_stops(
         place_ids = [stop.place_id for stop in stops if stop.place_id]
         if place_ids:
             # Load all places in one query
-            places = db.query(Place).filter(Place.id.in_(place_ids)).all()
+            places = db.query(PlaceModel).filter(PlaceModel.id.in_(place_ids)).all()
             places_dict = {place.id: place for place in places}
 
             # Attach places to stops
@@ -432,7 +432,7 @@ async def list_stops(
                 }
             elif stop.place_id:
                 # Place not loaded via joinedload, fetch it manually
-                place = db.query(Place).filter(Place.id == stop.place_id).first()
+                place = db.query(PlaceModel).filter(PlaceModel.id == stop.place_id).first()
                 if place:
                     stop_dict['place'] = {
                         'id': place.id,
@@ -473,7 +473,7 @@ async def create_stop(
     get_day_and_verify_access(day_id, trip_id, current_user, db)
     
     # Verify place exists
-    place = db.query(Place).filter(Place.id == stop_data.place_id).first()
+    place = db.query(PlaceModel).filter(PlaceModel.id == stop_data.place_id).first()
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
     
@@ -585,7 +585,7 @@ async def update_stop(
 
     # If updating place_id, verify place exists
     if stop_data.place_id and stop_data.place_id != stop.place_id:
-        place = db.query(Place).filter(Place.id == stop_data.place_id).first()
+        place = db.query(PlaceModel).filter(PlaceModel.id == stop_data.place_id).first()
         if not place:
             raise HTTPException(status_code=404, detail="Place not found")
 
