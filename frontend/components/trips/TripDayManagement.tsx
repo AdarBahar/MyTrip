@@ -74,6 +74,8 @@ export default function TripDayManagement({
     })
   }, [prefilledLocations])
 
+
+
   // Load route points for selected day
   useEffect(() => {
     if (!selectedDay) return
@@ -319,6 +321,8 @@ export default function TripDayManagement({
           const hasStops = stops.length > 0
 
 
+
+
           
           return (
             <Card 
@@ -416,6 +420,7 @@ export default function TripDayManagement({
                 ) : (
                   <div className="text-gray-400 text-center py-4">No route planned</div>
                 )}
+
               </CardContent>
             </Card>
           )

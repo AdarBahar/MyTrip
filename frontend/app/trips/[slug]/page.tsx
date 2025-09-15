@@ -284,7 +284,9 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
         days.map(async (day) => {
           try {
             const stopsResponse = await listStops(tripId, day.id, { includePlaces: true })
-            stopsMap[day.id] = stopsResponse.data || []
+            // Fix: The API returns {stops: Array} not {data: Array}
+            const stopsArray = (stopsResponse as any).stops || stopsResponse.data || []
+            stopsMap[day.id] = stopsArray
           } catch (error) {
             console.warn(`Failed to load stops for day ${day.seq}:`, error)
             stopsMap[day.id] = []
@@ -563,10 +565,10 @@ export default function TripDetailPage({ params }: { params: { slug: string } })
         const mapWithStops = { ...map }
         for (const [dayId, stops] of Object.entries(stopsMap)) {
           if (mapWithStops[dayId]) {
-            // Filter out start and end stops, include intermediate stops
-            const intermediateStops = stops.filter((stop: any) =>
-              stop.kind !== 'start' && stop.kind !== 'end'
-            )
+            // Filter to include only intermediate stops (exclude start and end)
+            const intermediateStops = stops.filter((stop: any) => {
+              return stop.kind === 'via' || (stop.seq > 2)
+            })
             mapWithStops[dayId].stops = intermediateStops
           }
         }
