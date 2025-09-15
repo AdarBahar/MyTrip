@@ -154,36 +154,149 @@ class TestAuthenticationRegression:
 
 @pytest.mark.jwt
 class TestJWTAuthentication:
-    """Test JWT authentication (will be implemented during migration)"""
-    
-    @pytest.mark.skip(reason="JWT not implemented yet")
-    def test_jwt_login_success(self, client: TestClient, test_data_factory):
+    """Test JWT authentication implementation"""
+
+    def test_jwt_login_success(self, client: TestClient, test_user):
         """Test successful JWT login"""
-        login_data = test_data_factory.create_login_data()
-        response = client.post("/auth/login", json=login_data)
-        
+        login_data = {
+            "email": test_user.email,
+            "password": "testpassword123"
+        }
+        response = client.post("/auth/jwt/login", json=login_data)
+
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
         assert "refresh_token" in data
         assert "token_type" in data
         assert data["token_type"] == "bearer"
-        
+        assert "expires_in" in data
+        assert "user" in data
+
         # Validate JWT structure
         access_token = data["access_token"]
         assert_jwt_token_structure(access_token)
-        
-    @pytest.mark.skip(reason="JWT not implemented yet")
-    def test_jwt_token_refresh(self, client: TestClient):
+
+        refresh_token = data["refresh_token"]
+        assert_jwt_token_structure(refresh_token)
+
+        # Validate user data
+        user_data = data["user"]
+        assert user_data["email"] == test_user.email
+        assert user_data["id"] == test_user.id
+
+    def test_jwt_login_missing_password(self, client: TestClient, test_user):
+        """Test JWT login without password"""
+        login_data = {
+            "email": test_user.email
+        }
+        response = client.post("/auth/jwt/login", json=login_data)
+
+        assert response.status_code == 422  # Validation error
+
+    def test_jwt_login_empty_password(self, client: TestClient, test_user):
+        """Test JWT login with empty password"""
+        login_data = {
+            "email": test_user.email,
+            "password": ""
+        }
+        response = client.post("/auth/jwt/login", json=login_data)
+
+        assert response.status_code == 401
+
+    def test_jwt_login_nonexistent_user(self, client: TestClient):
+        """Test JWT login with nonexistent user"""
+        login_data = {
+            "email": "nonexistent@example.com",
+            "password": "testpassword123"
+        }
+        response = client.post("/auth/jwt/login", json=login_data)
+
+        assert response.status_code == 401
+
+    def test_jwt_token_refresh(self, client: TestClient, test_user):
         """Test JWT token refresh"""
-        # This will be implemented during JWT migration
-        pass
-        
-    @pytest.mark.skip(reason="JWT not implemented yet")
-    def test_jwt_token_expiration(self, client: TestClient):
-        """Test JWT token expiration handling"""
-        # This will be implemented during JWT migration
-        pass
+        # First login to get tokens
+        login_data = {
+            "email": test_user.email,
+            "password": "testpassword123"
+        }
+        login_response = client.post("/auth/jwt/login", json=login_data)
+        assert login_response.status_code == 200
+
+        tokens = login_response.json()
+        refresh_token = tokens["refresh_token"]
+
+        # Test refresh
+        refresh_data = {"refresh_token": refresh_token}
+        response = client.post("/auth/jwt/refresh", json=refresh_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert "token_type" in data
+        assert data["token_type"] == "bearer"
+        assert "expires_in" in data
+
+        # New access token should be different
+        new_access_token = data["access_token"]
+        assert new_access_token != tokens["access_token"]
+        assert_jwt_token_structure(new_access_token)
+
+    def test_jwt_token_refresh_invalid_token(self, client: TestClient):
+        """Test JWT token refresh with invalid token"""
+        refresh_data = {"refresh_token": "invalid_token"}
+        response = client.post("/auth/jwt/refresh", json=refresh_data)
+
+        assert response.status_code == 401
+
+    def test_jwt_logout(self, client: TestClient):
+        """Test JWT logout"""
+        response = client.post("/auth/jwt/logout")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
+
+    def test_jwt_validate_token(self, client: TestClient, test_user):
+        """Test JWT token validation"""
+        # First login to get token
+        login_data = {
+            "email": test_user.email,
+            "password": "testpassword123"
+        }
+        login_response = client.post("/auth/jwt/login", json=login_data)
+        assert login_response.status_code == 200
+
+        tokens = login_response.json()
+        access_token = tokens["access_token"]
+
+        # Test validation
+        response = client.get(f"/auth/jwt/validate?token={access_token}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is True
+        assert "user" in data
+        assert data["user"]["email"] == test_user.email
+
+    def test_jwt_validate_invalid_token(self, client: TestClient):
+        """Test JWT token validation with invalid token"""
+        response = client.get("/auth/jwt/validate?token=invalid_token")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is False
+
+    def test_jwt_health_check(self, client: TestClient):
+        """Test JWT health check endpoint"""
+        response = client.get("/auth/jwt/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["service"] == "jwt-authentication"
+        assert "endpoints" in data
 
 
 # Utility functions for authentication testing
