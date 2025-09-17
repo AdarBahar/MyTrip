@@ -239,3 +239,133 @@ def test_place(db_session, test_user):
     db_session.commit()
     db_session.refresh(place)
     return place
+
+
+# Enhanced testing fixtures for authentication testing
+@pytest.fixture
+def test_admin_user(db_session):
+    """Create a test admin user"""
+    user = User(
+        email="admin@example.com",
+        display_name="Admin User",
+        is_admin=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def admin_auth_headers(test_admin_user):
+    """Create authentication headers for admin user"""
+    return {
+        "Authorization": f"Bearer fake_token_{test_admin_user.id}"
+    }
+
+
+@pytest.fixture
+def invalid_auth_headers():
+    """Create invalid authentication headers for testing"""
+    return {
+        "Authorization": "Bearer invalid_token_123"
+    }
+
+
+@pytest.fixture
+def expired_auth_headers():
+    """Create expired authentication headers for testing"""
+    return {
+        "Authorization": "Bearer fake_token_expired_user"
+    }
+
+
+# Test data factories
+class TestDataFactory:
+    """Factory for creating test data"""
+
+    @staticmethod
+    def create_user_data(email: str = "test@example.com", **kwargs):
+        """Create user data for API requests"""
+        return {
+            "email": email,
+            "display_name": kwargs.get("display_name", "Test User"),
+            "password": kwargs.get("password", "testpassword123"),
+            **kwargs
+        }
+
+    @staticmethod
+    def create_login_data(email: str = "test@example.com", password: str = "testpassword123"):
+        """Create login data for authentication tests"""
+        return {
+            "email": email,
+            "password": password
+        }
+
+    @staticmethod
+    def create_trip_data(title: str = "Test Trip", **kwargs):
+        """Create trip data for API requests"""
+        return {
+            "title": title,
+            "destination": kwargs.get("destination", "Test Destination"),
+            "start_date": kwargs.get("start_date", "2024-06-01"),
+            "timezone": kwargs.get("timezone", "UTC"),
+            "status": kwargs.get("status", "draft"),
+            "is_published": kwargs.get("is_published", False),
+            **kwargs
+        }
+
+
+@pytest.fixture
+def test_data_factory():
+    """Provide test data factory"""
+    return TestDataFactory
+
+
+# Security testing utilities
+def assert_requires_auth(client: TestClient, method: str, endpoint: str, **kwargs):
+    """Assert that an endpoint requires authentication"""
+    response = getattr(client, method.lower())(endpoint, **kwargs)
+    assert response.status_code == 401, f"Expected 401 for unauthenticated {method} {endpoint}"
+
+
+def assert_requires_admin(client: TestClient, method: str, endpoint: str, auth_headers: dict, **kwargs):
+    """Assert that an endpoint requires admin privileges"""
+    response = getattr(client, method.lower())(endpoint, headers=auth_headers, **kwargs)
+    assert response.status_code in [401, 403], f"Expected 401/403 for non-admin {method} {endpoint}"
+
+
+# Performance testing utilities
+import time
+from contextlib import contextmanager
+
+@contextmanager
+def measure_time():
+    """Context manager to measure execution time"""
+    start = time.time()
+    yield lambda: time.time() - start
+
+
+def assert_response_time(client: TestClient, method: str, endpoint: str, max_time: float = 1.0, **kwargs):
+    """Assert that an API call completes within specified time"""
+    with measure_time() as get_time:
+        response = getattr(client, method.lower())(endpoint, **kwargs)
+
+    elapsed = get_time()
+    assert elapsed < max_time, f"{method} {endpoint} took {elapsed:.2f}s (max: {max_time}s)"
+    return response
+
+
+# Custom pytest markers for better test organization
+def pytest_configure(config):
+    """Configure custom pytest markers"""
+    config.addinivalue_line("markers", "unit: Unit tests")
+    config.addinivalue_line("markers", "integration: Integration tests")
+    config.addinivalue_line("markers", "e2e: End-to-end tests")
+    config.addinivalue_line("markers", "auth: Authentication tests")
+    config.addinivalue_line("markers", "security: Security tests")
+    config.addinivalue_line("markers", "performance: Performance tests")
+    config.addinivalue_line("markers", "api: API tests")
+    config.addinivalue_line("markers", "slow: Slow tests")
+    config.addinivalue_line("markers", "jwt: JWT authentication tests")
+    config.addinivalue_line("markers", "regression: Regression tests")

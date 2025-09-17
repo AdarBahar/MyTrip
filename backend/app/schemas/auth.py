@@ -16,12 +16,15 @@ class UserProfile(BaseModel):
 class LoginRequest(BaseModel):
     """Login request schema"""
     email: EmailStr
+    password: Optional[str] = Field(None, description="Password (optional for backward compatibility)")
 
 
 class LoginResponse(BaseModel):
     """Login response schema"""
     access_token: str
+    refresh_token: Optional[str] = Field(None, description="JWT refresh token")
     token_type: str = "bearer"
+    expires_in: Optional[int] = Field(None, description="Token expiry time in seconds")
     user: UserProfile
 
 
@@ -33,3 +36,27 @@ class CurrentUser(BaseModel):
     email: str
     display_name: str
     status: str
+
+
+class RefreshRequest(BaseModel):
+    """Token refresh request schema"""
+    refresh_token: str = Field(..., description="JWT refresh token")
+
+
+class RefreshResponse(BaseModel):
+    """Token refresh response schema"""
+    access_token: str = Field(..., description="New JWT access token")
+    token_type: str = Field(default="bearer", description="Token type")
+    expires_in: int = Field(..., description="Token expiry time in seconds")
+
+
+class LogoutResponse(BaseModel):
+    """Logout response schema"""
+    message: str = Field(default="Successfully logged out", description="Logout success message")
+
+
+class TokenValidationResponse(BaseModel):
+    """Token validation response schema"""
+    valid: bool = Field(..., description="Whether the token is valid")
+    user_id: Optional[str] = Field(None, description="User ID if token is valid")
+    expires_at: Optional[str] = Field(None, description="Token expiration time")

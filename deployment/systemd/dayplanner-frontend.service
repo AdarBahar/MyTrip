@@ -1,0 +1,38 @@
+[Unit]
+Description=DayPlanner Frontend Service
+After=network.target dayplanner-backend.service
+Wants=network.target
+Requires=dayplanner-backend.service
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/dayplanner/frontend
+EnvironmentFile=/opt/dayplanner/.env.production
+ExecStartPre=/opt/dayplanner/deployment/scripts/prestart-frontend.sh
+ExecStart=/usr/bin/node server.js
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dayplanner-frontend
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dayplanner /var/log/dayplanner /tmp
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=2048
+
+# Health check
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
