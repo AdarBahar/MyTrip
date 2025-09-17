@@ -8,6 +8,14 @@ const nextConfig = {
     // Disable TypeScript errors during builds for now
     ignoreBuildErrors: true,
   },
+
+  // Enable standalone output for production deployment
+  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
+
+  // Production optimizations
+  compress: true,
+  poweredByHeader: false,
+
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8100',
     NEXT_PUBLIC_MAPTILER_API_KEY: process.env.NEXT_PUBLIC_MAPTILER_API_KEY || '',
@@ -38,6 +46,29 @@ const nextConfig = {
       tls: false,
     };
     return config;
+  },
+
+  // Security headers for production
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'origin-when-cross-origin',
+          },
+        ],
+      },
+    ]
   },
 }
 

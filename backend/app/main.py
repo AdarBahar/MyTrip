@@ -21,6 +21,7 @@ except ImportError:
 
 # Import routers
 from app.api.auth.router import router as auth_router
+from app.api.auth.jwt_router import router as jwt_auth_router
 from app.api.trips.router import router as trips_router
 from app.api.routing.router import router as routing_router
 from app.api.days.router import router as days_router
@@ -636,6 +637,7 @@ async def root():
 
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(jwt_auth_router, prefix="/auth", tags=["jwt-auth"])
 app.include_router(trips_router, prefix="/trips", tags=["trips"])
 app.include_router(routing_router, prefix="/routing", tags=["routing"])
 app.include_router(days_router, prefix="/trips/{trip_id}/days", tags=["days"])
