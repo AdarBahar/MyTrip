@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from 'react'
 import { Day, Trip } from '@/types'
 import { Place, createPlace } from '@/lib/api/places'
+import { convertToPlaceCreateData, debugPlaceStructure } from '@/lib/utils/place-utils'
 import { useDays } from '@/hooks/use-days'
 import { useToast } from '@/components/ui/use-toast'
 import { listStops, createStop, type StopWithPlace } from '@/lib/api/stops'
@@ -128,6 +129,12 @@ export default function TripDayManagement({
   }
 
   const handlePlaceFromSearch = (place: any) => {
+    console.log('TripDayManagement: handlePlaceFromSearch called with:', {
+      place: place?.name,
+      currentSelectedDay: selectedDay?.id,
+      tripId: trip?.id
+    });
+
     setSelectedPlace(place)
     setShowAddPoint(false)
     setShowPointTypeSelection(true)
@@ -136,38 +143,168 @@ export default function TripDayManagement({
   const handlePointTypeSelect = async (type: string) => {
     if (!selectedPlace || !selectedDay) return
 
+    // Debug: Check trip and day values
+    console.log('TripDayManagement: handlePointTypeSelect called with:', {
+      type,
+      tripId: trip?.id,
+      tripObject: trip,
+      selectedDayId: selectedDay?.id,
+      selectedDayObject: selectedDay,
+      selectedPlace: selectedPlace?.name
+    });
+
+    if (!trip?.id) {
+      console.error('TripDayManagement: trip.id is missing!', trip);
+      return;
+    }
+
+    if (!selectedDay?.id) {
+      console.error('TripDayManagement: selectedDay.id is missing!', selectedDay);
+      return;
+    }
+
     try {
+      // Debug: Log the original place structure
+      debugPlaceStructure(selectedPlace, 'TripDayManagement: Original place');
+
+      // Convert place to create format with validation
+      const placeData = convertToPlaceCreateData(selectedPlace, 'trip_day_management');
+
+      // Debug: Log the converted place data
+      console.log('TripDayManagement: Creating place with data:', placeData);
+
       // Create place if needed
-      const placeId = await createPlace({
-        name: selectedPlace.name,
-        address: selectedPlace.address,
-        lat: selectedPlace.lat,
-        lon: selectedPlace.lon,
-        meta: selectedPlace.meta
-      })
+      const placeId = await createPlace(placeData)
+
+      // Map point type to stop kind
+      const stopKind = type === 'start' ? 'start' : type === 'end' ? 'end' : 'via';
+
+      // Debug: Log the stop creation data
+      console.log('TripDayManagement: Creating stop with:', {
+        tripId: trip.id,
+        dayId: selectedDay.id,
+        placeId: placeId.id,
+        kind: stopKind,
+        type: type
+      });
+
+      // Get existing stops to determine sequence numbers and check constraints
+      let existingStops: any[] = [];
+      try {
+        const stopsResponse = await listStops(trip.id, selectedDay.id, { includePlaces: true });
+        existingStops = stopsResponse.stops as any[];
+      } catch (error) {
+        console.warn('Could not fetch existing stops:', error);
+        // Continue anyway - backend will handle constraints
+      }
+
+      // Check for existing start/end stops
+      if (stopKind === 'start') {
+        const existingStart = existingStops.find(s => s.kind === 'start');
+        if (existingStart) {
+          throw new Error('This day already has a start point. Please remove the existing start point first.');
+        }
+      } else if (stopKind === 'end') {
+        const existingEnd = existingStops.find(s => s.kind === 'end');
+        if (existingEnd) {
+          throw new Error('This day already has an end point. Please remove the existing end point first.');
+        }
+      }
+
+      // Determine sequence number based on stop kind
+      let seq: number;
+      if (stopKind === 'start') {
+        seq = 1; // Start stops must be at sequence 1
+      } else if (stopKind === 'end') {
+        // End stops should be at the highest sequence number
+        const maxSeq = existingStops.length > 0 ? Math.max(...existingStops.map(s => s.seq)) : 0;
+        seq = Math.max(maxSeq + 1, 999); // Ensure it's higher than existing stops
+      } else {
+        // Via stops - find next available sequence number
+        const maxSeq = existingStops.length > 0 ? Math.max(...existingStops.map(s => s.seq)) : 0;
+        seq = maxSeq + 1;
+      }
 
       // Create stop
-      await createStop({
-        day_id: selectedDay.id,
+      await createStop(trip.id, selectedDay.id, {
         place_id: placeId.id,
-        seq: 999 // Will be auto-assigned by backend
+        seq: seq,
+        kind: stopKind,
+        fixed: stopKind === 'start' || stopKind === 'end' // Start and end points are typically fixed
       })
 
-      // Refresh route points
-      const stopsResponse = await listStops(trip.id, selectedDay.id)
-      // ... refresh logic
+      // Refresh the UI by updating local state and triggering events
+      try {
+        // Trigger events that other components listen to
+        window.dispatchEvent(new CustomEvent('stops-mutated', {
+          detail: { dayId: selectedDay.id, tripId: trip.id }
+        }));
+
+        // Refresh day locations summary
+        window.dispatchEvent(new CustomEvent('day-summary-updated', {
+          detail: { dayId: selectedDay.id }
+        }));
+
+        // Update the dayLocations state to reflect the new point
+        setDayLocations(prev => {
+          const updated = { ...prev };
+          if (!updated[selectedDay.id]) {
+            updated[selectedDay.id] = {};
+          }
+
+          // Add the new point based on its kind
+          if (stopKind === 'start') {
+            updated[selectedDay.id].start = {
+              id: placeId.id,
+              name: placeData.name,
+              address: placeData.address,
+              lat: placeData.lat,
+              lon: placeData.lon,
+              meta: placeData.meta
+            };
+          } else if (stopKind === 'end') {
+            updated[selectedDay.id].end = {
+              id: placeId.id,
+              name: placeData.name,
+              address: placeData.address,
+              lat: placeData.lat,
+              lon: placeData.lon,
+              meta: placeData.meta
+            };
+          }
+
+          return updated;
+        });
+
+      } catch (error) {
+        console.warn('Failed to refresh UI after adding point:', error);
+      }
 
       setShowPointTypeSelection(false)
       setSelectedPlace(null)
-      
+
       toast({
         title: 'Point added',
-        description: `${selectedPlace.name} has been added to Day ${selectedDay.seq}`
+        description: `${selectedPlace.name} has been added to Day ${selectedDay.seq}`,
+        duration: 3000
       })
     } catch (error) {
+      console.error('TripDayManagement: Failed to add point:', error);
+
+      let errorMessage = 'Failed to add point';
+      if (error instanceof Error) {
+        if (error.message.includes('already has')) {
+          errorMessage = error.message;
+        } else if (error.message.includes('constraint')) {
+          errorMessage = 'Database constraint violation. Please check if this day already has a start or end point.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       toast({
         title: 'Error',
-        description: 'Failed to add point',
+        description: errorMessage,
         variant: 'destructive'
       })
     }
@@ -265,6 +402,11 @@ export default function TripDayManagement({
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
+                        console.log('TripDayManagement: Add Point clicked for day:', {
+                          dayId: day.id,
+                          daySeq: day.seq,
+                          tripId: trip.id
+                        });
                         setSelectedDay(day)
                         setShowAddPoint(true)
                       }}

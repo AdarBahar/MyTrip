@@ -94,20 +94,15 @@ export default function AddStopModal({
     try {
       setSearching(true);
       debug.log('AddStopModal', 'Creating custom place', { name: searchQuery });
-      
-      const place = await createPlace({
-        name: searchQuery.trim(),
-        address: '',
-        lat: 0,
-        lon: 0,
-        meta: { custom: true }
-      });
-      
-      handlePlaceSelect(place);
-      
+
+      // For custom places without coordinates, we need to geocode first
+      // or ask the user to provide coordinates
+      throw new Error('Custom places without coordinates are not supported yet. Please search for a specific location.');
+
     } catch (err) {
       debug.error('AddStopModal', 'Failed to create custom place', err);
       // TODO: Show error toast
+      alert('Please search for a specific location with coordinates instead of creating a custom place.');
     } finally {
       setSearching(false);
     }

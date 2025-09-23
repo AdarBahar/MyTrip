@@ -1,12 +1,13 @@
 """
 RoadTrip Planner FastAPI Application
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from fastapi.security import HTTPBearer
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
 from app.core.database import engine
@@ -49,6 +50,17 @@ from app.core.exception_handlers import (
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+
+# Charset middleware to ensure proper UTF-8 encoding
+class CharsetMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Ensure JSON responses have proper charset
+        if response.headers.get("content-type", "").startswith("application/json"):
+            response.headers["content-type"] = "application/json; charset=utf-8"
+
+        return response
 
 app = FastAPI(
     title="MyTrip - Road Trip Planner API",
@@ -575,6 +587,9 @@ def custom_openapi():
     return app.openapi_schema
 
 app.openapi = custom_openapi
+
+# Add charset middleware to ensure proper UTF-8 encoding
+app.add_middleware(CharsetMiddleware)
 
 # Configure CORS
 # In dev, loosen CORS to any origin; in other envs, use configured origins
