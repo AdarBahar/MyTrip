@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Search, MapPin, Hotel, Utensils, Landmark } from 'lucide-react';
 import { Place, searchPlaces, geocodeAddress, createPlace, getPlace } from '@/lib/api/places';
+import { convertToPlaceCreateData, debugPlaceStructure } from '@/lib/utils/place-utils';
 import { createStop, listStops, getNextSequenceNumber, type StopWithPlace } from '@/lib/api/stops';
 import { Button } from '@/components/ui/button';
 
@@ -60,9 +61,24 @@ export default function InlineAddStop({ tripId, dayId, dayCenter, onAdded, onCan
     // Ensure place exists in backend; prefer creating to avoid 404 noise for external IDs
     let placeId = picked.id;
     try {
-      const created = await createPlace({ name: picked.name || name, address: picked.address || name, lat: picked.lat, lon: picked.lon, meta: { source: 'inline-add' } });
+      // Debug: Log the original place structure
+      debugPlaceStructure(picked, 'InlineAddStop: Original place');
+
+      // Convert place to create format with validation
+      const placeData = convertToPlaceCreateData(picked, 'inline_add');
+
+      // Override name if custom name provided
+      if (customName) {
+        placeData.name = customName;
+      }
+
+      // Debug: Log the converted place data
+      console.log('InlineAddStop: Creating place with data:', placeData);
+
+      const created = await createPlace(placeData);
       placeId = created.id;
     } catch (e) {
+      console.error('InlineAddStop: Failed to create place:', e);
       // If create fails (e.g., duplicate constraints), last attempt: keep original id
     }
 
