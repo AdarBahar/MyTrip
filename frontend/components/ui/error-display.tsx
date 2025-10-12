@@ -262,7 +262,9 @@ export function useAPIResponseHandler() {
   const [error, setError] = React.useState<APIError | null>(null);
   const [success, setSuccess] = React.useState<{ message: string; type: 'created' | 'deleted' | 'updated' } | null>(null);
 
-  const handleResponse = <T>(response: any, successMessage?: string) => {
+  // Note: in TSX files, generic arrow functions like `<T>(...) =>`
+  // are parsed as JSX. Use a function declaration to avoid parsing issues.
+  function handleResponse<T>(response: any, successMessage?: string) {
     if (response.success) {
       setError(null);
       if (successMessage) {
@@ -275,7 +277,7 @@ export function useAPIResponseHandler() {
       setError(response.error);
       return null;
     }
-  };
+  }
 
   const clearMessages = () => {
     setError(null);
