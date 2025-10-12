@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // Use Docker internal network when running in Docker
-const BACKEND_URL = 'http://roadtrip-backend:8000'
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://mytrips-api.bahar.co.il'
 
 export async function GET(request: NextRequest) {
   try {
