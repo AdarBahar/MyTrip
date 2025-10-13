@@ -38,33 +38,38 @@ async def get_current_user(
     token: str = Depends(get_token_from_header),
     db: Session = Depends(get_db)
 ) -> User:
-    """Get current user from fake token"""
-    if not token or not token.startswith("fake_token_"):
+    """Get current user from JWT token with fake token fallback"""
+    from app.core.jwt import (
+        get_user_id_from_token,
+        is_fake_token,
+        extract_user_id_from_fake_token
+    )
+
+    # Handle fake tokens for backward compatibility
+    if is_fake_token(token):
+        user_id = extract_user_id_from_fake_token(token)
+    else:
+        # Handle JWT tokens
+        try:
+            user_id = get_user_id_from_token(token)
+        except HTTPException:
+            # If JWT validation fails, try fake token as fallback
+            if token.startswith("fake_token_"):
+                user_id = extract_user_id_from_fake_token(token)
+            else:
+                raise
+
+    # Get user from database
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Extract user ID from fake token
-    try:
-        user_id = token.replace("fake_token_", "")
-        user = db.query(User).filter(User.id == user_id).first()
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
-        return user
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token format",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+
+    return user
 
 
 async def get_current_user_optional(
@@ -72,16 +77,39 @@ async def get_current_user_optional(
     db: Session = Depends(get_db)
 ) -> User | None:
     """Get current user from token, but don't raise error if not authenticated"""
+    from app.core.jwt import (
+        get_user_id_from_token,
+        is_fake_token,
+        extract_user_id_from_fake_token
+    )
+
     if not authorization:
         return None
-    
+
     try:
         scheme, token = authorization.split()
-        if scheme.lower() != "bearer" or not token.startswith("fake_token_"):
+        if scheme.lower() != "bearer":
             return None
-        
-        user_id = token.replace("fake_token_", "")
+
+        # Handle both fake tokens and JWT
+        if is_fake_token(token):
+            user_id = extract_user_id_from_fake_token(token)
+        else:
+            try:
+                user_id = get_user_id_from_token(token)
+            except HTTPException:
+                # If JWT validation fails, try fake token as fallback
+                if token.startswith("fake_token_"):
+                    user_id = extract_user_id_from_fake_token(token)
+                else:
+                    return None
+
         user = db.query(User).filter(User.id == user_id).first()
-        return user
+
+        # Only return user if active
+        if user and (not hasattr(user, 'is_active') or user.is_active):
+            return user
+        return None
+
     except Exception:
         return None

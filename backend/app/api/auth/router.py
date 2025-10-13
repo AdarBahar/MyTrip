@@ -15,14 +15,14 @@ security = HTTPBearer()
 
 
 @router.post("/login", response_model=LoginResponse)
-async def fake_login(
+async def login(
     login_data: LoginRequest,
     db: Session = Depends(get_db)
 ):
     """
     **Login with Email Address**
 
-    This is a development authentication endpoint that creates or returns a user for any valid email address.
+    Authenticate with email address and get a JWT access token.
 
     **How to use:**
     1. Enter any valid email address
@@ -33,16 +33,18 @@ async def fake_login(
 
     **Example:**
     - Email: `adar.bahar@gmail.com`
-    - Response: `{"access_token": "fake_token_ABC123", ...}`
-    - Authorization: `Bearer fake_token_ABC123`
+    - Response: `{"access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...", ...}`
+    - Authorization: `Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...`
 
     **Note:** This automatically creates a new user account if the email doesn't exist.
     """
+    from app.core.jwt import create_access_token
+
     email = login_data.email.lower()
-    
+
     # Check if user exists
     user = db.query(User).filter(User.email == email).first()
-    
+
     if not user:
         # Create new user if doesn't exist
         display_name = email.split('@')[0].replace('.', ' ').title()
@@ -54,12 +56,12 @@ async def fake_login(
         db.add(user)
         db.commit()
         db.refresh(user)
-    
-    # Create fake JWT token (just the user ID for simplicity)
-    fake_token = f"fake_token_{user.id}"
-    
+
+    # Create JWT access token
+    access_token = create_access_token(data={"sub": user.id})
+
     return LoginResponse(
-        access_token=fake_token,
+        access_token=access_token,
         user=UserProfile(
             id=user.id,
             email=user.email,

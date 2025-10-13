@@ -1,0 +1,158 @@
+{
+  "api_base": "https://mytrips-api.bahar.co.il",
+  "test_email": "test@example.com",
+  "test_scenarios": {
+    "basic_trip": {
+      "title": "API Test Trip",
+      "destination": "Jerusalem, Israel",
+      "start_date": "2024-12-01"
+    },
+    "test_day": {
+      "title": "Test Day 1",
+      "date": "2024-12-01"
+    },
+    "test_stop": {
+      "title": "Western Wall",
+      "stop_type": "attraction",
+      "duration_min": 60,
+      "notes": "Historic religious site"
+    }
+  },
+  "endpoints_to_test": [
+    {
+      "name": "Health Check",
+      "method": "GET",
+      "path": "/health",
+      "auth_required": false,
+      "expected_status": 200
+    },
+    {
+      "name": "API Documentation",
+      "method": "GET", 
+      "path": "/docs",
+      "auth_required": false,
+      "expected_status": 200
+    },
+    {
+      "name": "OpenAPI Spec",
+      "method": "GET",
+      "path": "/openapi.json", 
+      "auth_required": false,
+      "expected_status": 200
+    },
+    {
+      "name": "User Login",
+      "method": "POST",
+      "path": "/auth/login",
+      "auth_required": false,
+      "expected_status": 200,
+      "data": {"email": "test@example.com"}
+    },
+    {
+      "name": "List Trips",
+      "method": "GET",
+      "path": "/trips/",
+      "auth_required": true,
+      "expected_status": 200
+    },
+    {
+      "name": "Create Trip",
+      "method": "POST", 
+      "path": "/trips/",
+      "auth_required": true,
+      "expected_status": [200, 201],
+      "data_from": "basic_trip"
+    },
+    {
+      "name": "Get Trip",
+      "method": "GET",
+      "path": "/trips/{trip_id}",
+      "auth_required": true,
+      "expected_status": 200,
+      "requires": "trip_id"
+    },
+    {
+      "name": "Update Trip",
+      "method": "PATCH",
+      "path": "/trips/{trip_id}",
+      "auth_required": true,
+      "expected_status": 200,
+      "requires": "trip_id",
+      "data": {"title": "Updated API Test Trip"}
+    },
+    {
+      "name": "Create Day",
+      "method": "POST",
+      "path": "/trips/{trip_id}/days/",
+      "auth_required": true,
+      "expected_status": [200, 201],
+      "requires": "trip_id",
+      "data_from": "test_day"
+    },
+    {
+      "name": "List Days",
+      "method": "GET",
+      "path": "/trips/{trip_id}/days/",
+      "auth_required": true,
+      "expected_status": 200,
+      "requires": "trip_id"
+    },
+    {
+      "name": "Create Stop",
+      "method": "POST",
+      "path": "/stops/",
+      "auth_required": true,
+      "expected_status": [200, 201],
+      "requires": "day_id",
+      "data_from": "test_stop"
+    },
+    {
+      "name": "List Stops",
+      "method": "GET",
+      "path": "/stops/?day_id={day_id}",
+      "auth_required": true,
+      "expected_status": 200,
+      "requires": "day_id"
+    },
+    {
+      "name": "Places Search",
+      "method": "GET",
+      "path": "/places/search?query=Jerusalem",
+      "auth_required": true,
+      "expected_status": 200,
+      "optional": true
+    },
+    {
+      "name": "User Settings",
+      "method": "GET",
+      "path": "/settings/user",
+      "auth_required": true,
+      "expected_status": 200,
+      "optional": true
+    },
+    {
+      "name": "Routing Health",
+      "method": "GET",
+      "path": "/routing/health",
+      "auth_required": true,
+      "expected_status": 200,
+      "optional": true
+    },
+    {
+      "name": "Delete Trip",
+      "method": "DELETE",
+      "path": "/trips/{trip_id}",
+      "auth_required": true,
+      "expected_status": [200, 204],
+      "requires": "trip_id",
+      "cleanup": true
+    }
+  ],
+  "test_options": {
+    "timeout": 30,
+    "retry_count": 3,
+    "verbose": true,
+    "save_responses": true,
+    "cleanup_after_test": true
+  }
+}
