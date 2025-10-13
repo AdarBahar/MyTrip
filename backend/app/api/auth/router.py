@@ -20,42 +20,74 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """
-    **Login with Email Address**
+    **Login with Email and Password**
 
-    Authenticate with email address and get a JWT access token.
+    Authenticate with email address and password against the production database.
 
     **How to use:**
-    1. Enter any valid email address
-    2. Copy the `access_token` from the response
-    3. Click the "Authorize" button in Swagger UI
-    4. Enter: `Bearer <your_access_token>`
-    5. Use protected endpoints with automatic authentication
+    1. Enter your registered email address
+    2. Enter your password (if no password field, any non-empty string for existing users)
+    3. Copy the `access_token` from the response
+    4. Click the "Authorize" button in Swagger UI
+    5. Enter: `Bearer <your_access_token>`
+    6. Use protected endpoints with automatic authentication
 
     **Example:**
     - Email: `adar.bahar@gmail.com`
+    - Password: `your_password` (or any string if password not implemented yet)
     - Response: `{"access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...", ...}`
     - Authorization: `Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...`
 
-    **Note:** This automatically creates a new user account if the email doesn't exist.
+    **Note:** Only existing users in the database can login. No automatic user creation.
     """
     from app.core.jwt import create_access_token
 
     email = login_data.email.lower()
 
-    # Check if user exists
+    # Find user by email - must exist in database
     user = db.query(User).filter(User.email == email).first()
 
     if not user:
-        # Create new user if doesn't exist
-        display_name = email.split('@')[0].replace('.', ' ').title()
-        user = User(
-            email=email,
-            display_name=display_name,
-            status=UserStatus.ACTIVE
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password. User not found.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+
+    # Check if user is active
+    if user.status != UserStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account is disabled.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Password validation
+    if not login_data.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is required.",
+        )
+
+    # TODO: Implement proper password hashing and verification
+    # For now, accept any non-empty password for existing users
+    # This will be enhanced when password hashing is implemented
+    if not login_data.password.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password. Password cannot be empty.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # If user has a password field and it's hashed, verify it
+    if hasattr(user, 'password_hash') and user.password_hash:
+        from app.core.jwt import verify_password
+        if not verify_password(login_data.password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     # Create JWT access token
     access_token = create_access_token(data={"sub": user.id})

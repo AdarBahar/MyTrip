@@ -21,6 +21,7 @@ class User(BaseModel):
 
     email = Column(String(255), unique=True, nullable=False, index=True)
     display_name = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)  # Optional for backward compatibility
     status = Column(Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False)
 
     # Relationships

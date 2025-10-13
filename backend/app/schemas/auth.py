@@ -16,7 +16,7 @@ class UserProfile(BaseModel):
 class LoginRequest(BaseModel):
     """Login request schema"""
     email: EmailStr
-    password: Optional[str] = Field(None, description="Password (optional for backward compatibility)")
+    password: str = Field(..., min_length=1, description="User password")
 
 
 class LoginResponse(BaseModel):
