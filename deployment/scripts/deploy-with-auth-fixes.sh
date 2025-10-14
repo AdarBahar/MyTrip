@@ -51,7 +51,7 @@ check_root() {
 # Install system dependencies
 install_system_dependencies() {
     log_info "Installing system dependencies..."
-    
+
     apt-get update
     apt-get install -y \
         python3 \
@@ -67,93 +67,93 @@ install_system_dependencies() {
         mysql-client \
         libffi-dev \
         libssl-dev
-    
+
     # Install pnpm globally
     npm install -g pnpm
-    
+
     log_success "System dependencies installed"
 }
 
 # Setup backend with authentication fixes
 setup_backend() {
     log_info "Setting up backend with authentication fixes..."
-    
+
     cd "$BACKEND_DIR"
-    
+
     # Create virtual environment
     if [ ! -d "venv" ]; then
         python3 -m venv venv
         log_success "Virtual environment created"
     fi
-    
+
     # Install Python dependencies
     venv/bin/pip install --upgrade pip
     venv/bin/pip install -r requirements.txt
-    
+
     # Ensure JWT dependencies are installed
     log_info "Installing JWT authentication dependencies..."
     venv/bin/pip install python-jose[cryptography]==3.3.0
     venv/bin/pip install passlib[bcrypt]==1.7.4
     venv/bin/pip install pyjwt==2.8.0
     venv/bin/pip install cryptography==41.0.7
-    
+
     # Set proper ownership
     chown -R www-data:www-data "$BACKEND_DIR"
-    
+
     log_success "Backend setup completed with JWT authentication"
 }
 
 # Setup frontend
 setup_frontend() {
     log_info "Setting up frontend..."
-    
+
     cd "$FRONTEND_DIR"
-    
+
     # Install dependencies
     sudo -u www-data pnpm install
-    
+
     # Build for production
     sudo -u www-data pnpm build
-    
+
     # Set proper ownership
     chown -R www-data:www-data "$FRONTEND_DIR"
-    
+
     log_success "Frontend setup completed"
 }
 
 # Configure environment variables
 configure_environment() {
     log_info "Configuring environment variables..."
-    
+
     if [ ! -f "$ENV_FILE" ]; then
         log_error "Environment file not found: $ENV_FILE"
         log_info "Please create $ENV_FILE with your database credentials"
         exit 1
     fi
-    
+
     # Ensure APP_SECRET is set for JWT
     if ! grep -q "APP_SECRET" "$ENV_FILE"; then
         log_warning "APP_SECRET not found in environment file"
         log_info "Adding default APP_SECRET (change this in production!)"
         echo "APP_SECRET=your-super-secure-secret-key-change-this-in-production-min-32-chars" >> "$ENV_FILE"
     fi
-    
+
     # Ensure JWT settings are configured
     if ! grep -q "JWT_ALGORITHM" "$ENV_FILE"; then
         echo "JWT_ALGORITHM=HS256" >> "$ENV_FILE"
         echo "ACCESS_TOKEN_EXPIRE_MINUTES=30" >> "$ENV_FILE"
         echo "REFRESH_TOKEN_EXPIRE_DAYS=7" >> "$ENV_FILE"
     fi
-    
+
     log_success "Environment configuration completed"
 }
 
 # Test database connection
 test_database_connection() {
     log_info "Testing database connection..."
-    
+
     cd "$BACKEND_DIR"
-    
+
     # Test database connection
     if sudo -u www-data bash -c "
         source venv/bin/activate
@@ -241,7 +241,7 @@ create_production_users() {
 # Create systemd services
 create_systemd_services() {
     log_info "Creating systemd services..."
-    
+
     # Backend service
     cat > /etc/systemd/system/dayplanner-backend.service << EOF
 [Unit]
@@ -295,33 +295,33 @@ EOF
 
     # Reload systemd
     systemctl daemon-reload
-    
+
     # Enable services
     systemctl enable dayplanner-backend
     systemctl enable dayplanner-frontend
-    
+
     log_success "Systemd services created and enabled"
 }
 
 # Configure nginx
 configure_nginx() {
     log_info "Configuring nginx..."
-    
+
     # API domain configuration
     cat > /etc/nginx/sites-available/mytrips-api << 'EOF'
 server {
     listen 80;
     server_name mytrips-api.bahar.co.il;
-    
+
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
-    
+
     # Logging
     access_log /var/log/nginx/mytrips-api_access.log;
     error_log /var/log/nginx/mytrips-api_error.log;
-    
+
     # Proxy all requests to backend
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -333,12 +333,12 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
-        
+
         # CORS headers for API
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept" always;
-        
+
         # Handle preflight requests
         if ($request_method = 'OPTIONS') {
             add_header Access-Control-Allow-Origin "*";
@@ -348,7 +348,7 @@ server {
             add_header Content-Type text/plain;
             return 204;
         }
-        
+
         # Timeouts
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
@@ -359,7 +359,7 @@ EOF
 
     # Enable the site
     ln -sf /etc/nginx/sites-available/mytrips-api /etc/nginx/sites-enabled/
-    
+
     # Test nginx configuration
     if nginx -t; then
         log_success "Nginx configuration valid"
@@ -370,10 +370,108 @@ EOF
     fi
 }
 
+# Setup SSL certificates
+setup_ssl_certificates() {
+    log_info "Setting up SSL certificates..."
+
+    # Install certbot if not already installed
+    if ! command -v certbot &> /dev/null; then
+        log_info "Installing certbot..."
+        apt update
+        apt install -y certbot python3-certbot-nginx
+    fi
+
+    # Check if SSL certificates already exist
+    if [ -d "/etc/letsencrypt/live/mytrips-api.bahar.co.il" ] || [ -d "/etc/letsencrypt/live/mytrips-api.bahar.co.il-0001" ]; then
+        log_info "SSL certificates already exist, updating nginx configuration..."
+
+        # Find the correct certificate directory
+        if [ -d "/etc/letsencrypt/live/mytrips-api.bahar.co.il-0001" ]; then
+            CERT_DIR="mytrips-api.bahar.co.il-0001"
+        else
+            CERT_DIR="mytrips-api.bahar.co.il"
+        fi
+
+        # Update nginx configuration for HTTPS
+        log_info "Updating nginx configuration for HTTPS..."
+
+        # Add HTTPS server block to existing configuration
+        cat >> /etc/nginx/sites-available/mytrips-api << EOF
+
+# HTTPS server
+server {
+    listen 443 ssl;
+    server_name mytrips-api.bahar.co.il;
+
+    # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/$CERT_DIR/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$CERT_DIR/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Logging
+    access_log /var/log/nginx/mytrips-api_access.log;
+    error_log /var/log/nginx/mytrips-api_error.log;
+
+    # Remove CORS headers from backend to avoid duplicates
+    proxy_hide_header Access-Control-Allow-Origin;
+    proxy_hide_header Access-Control-Allow-Methods;
+    proxy_hide_header Access-Control-Allow-Headers;
+    proxy_hide_header Access-Control-Allow-Credentials;
+
+    # Handle all requests
+    location ~ ^/(.*)$ {
+        if (\$request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With" always;
+
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+}
+EOF
+
+        # Update HTTP server to redirect to HTTPS
+        sed -i 's/listen 80;/listen 80;\n    return 301 https:\/\/\$server_name\$request_uri;/' /etc/nginx/sites-available/mytrips-api
+
+        # Test and reload nginx
+        if nginx -t; then
+            systemctl reload nginx
+            log_success "HTTPS configuration applied successfully"
+        else
+            log_error "HTTPS configuration failed, check nginx logs"
+            return 1
+        fi
+    else
+        log_info "No existing SSL certificates found"
+        log_info "To set up SSL certificates, run:"
+        log_info "  sudo certbot --nginx -d mytrips-api.bahar.co.il"
+        log_info "  sudo /opt/dayplanner/deployment/scripts/enable-ssl.sh"
+    fi
+}
+
 # Start services
 start_services() {
     log_info "Starting services..."
-    
+
     # Start backend
     systemctl start dayplanner-backend
     if systemctl is-active --quiet dayplanner-backend; then
@@ -383,7 +481,7 @@ start_services() {
         journalctl -u dayplanner-backend --no-pager -n 20
         return 1
     fi
-    
+
     # Start frontend
     systemctl start dayplanner-frontend
     if systemctl is-active --quiet dayplanner-frontend; then
@@ -398,7 +496,7 @@ start_services() {
 # Test deployment
 test_deployment() {
     log_info "Testing deployment..."
-    
+
     # Test health endpoint
     sleep 5
     if curl -f http://localhost:8000/health >/dev/null 2>&1; then
@@ -407,7 +505,7 @@ test_deployment() {
         log_error "Backend health check failed"
         return 1
     fi
-    
+
     # Test authentication endpoint
     if curl -f -X POST "http://localhost:8000/auth/login" \
         -H "Content-Type: application/json" \
@@ -417,7 +515,7 @@ test_deployment() {
         log_error "Authentication endpoint failed"
         return 1
     fi
-    
+
     log_success "All tests passed!"
 }
 
@@ -425,7 +523,7 @@ test_deployment() {
 main() {
     log_info "Starting MyTrips deployment with authentication fixes..."
     log_info "Deployment started at $(date)"
-    
+
     check_root
     install_system_dependencies
     setup_backend
@@ -437,9 +535,10 @@ main() {
     create_production_users || exit 1
     create_systemd_services
     configure_nginx
+    setup_ssl_certificates
     start_services
     test_deployment
-    
+
     log_success "Deployment completed successfully!"
     log_info "Your API is available at: http://mytrips-api.bahar.co.il"
     log_info "Backend logs: sudo journalctl -u dayplanner-backend -f"

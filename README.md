@@ -141,6 +141,54 @@ roadtrip-planner/
 
 Once running, visit http://localhost:8000/docs for interactive API documentation.
 
+## 🚀 Production Deployment
+
+### Automated Deployment with SSL
+
+```bash
+# Deploy to production server
+sudo /opt/dayplanner/deployment/scripts/deploy-with-auth-fixes.sh
+
+# Enable SSL certificates (if not already configured)
+sudo /opt/dayplanner/deployment/scripts/enable-ssl.sh
+```
+
+### SSL Certificate Setup
+
+The deployment scripts automatically detect and configure SSL certificates:
+
+- **Automatic Detection**: Checks for existing Let's Encrypt certificates
+- **HTTPS Configuration**: Configures nginx with SSL and HTTP redirect
+- **CORS Support**: Maintains CORS headers for frontend development
+- **Auto-Renewal**: Sets up automatic certificate renewal
+
+### Manual SSL Setup
+
+```bash
+# Install SSL certificates manually
+sudo certbot --nginx -d mytrips-api.bahar.co.il
+
+# Or use the automated script
+sudo /opt/dayplanner/deployment/scripts/enable-ssl.sh
+```
+
+### Environment Configuration
+
+Update production environment for HTTPS:
+
+```bash
+# In .env.production
+APP_BASE_URL=https://mytrips-api.bahar.co.il
+NEXT_PUBLIC_API_BASE_URL=https://mytrips-api.bahar.co.il
+```
+
+### Documentation
+
+- [SSL Setup Guide](docs/SSL_SETUP.md) - Complete SSL configuration guide
+- [CORS Fix Guide](docs/CORS_FIX.md) - Frontend development CORS setup
+- [Authentication Guide](docs/AUTHENTICATION.md) - JWT authentication system
+- [Security Policy](SECURITY.md) - Security practices and policies
+
 ## Contributing
 
 1. Install pre-commit hooks: `pre-commit install`

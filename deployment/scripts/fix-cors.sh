@@ -136,9 +136,20 @@ fi
 # Test the fix
 log_info "Testing CORS fix..."
 
+# Determine if HTTPS is configured
+if [ -d "/etc/letsencrypt/live/mytrips-api.bahar.co.il" ] || [ -d "/etc/letsencrypt/live/mytrips-api.bahar.co.il-0001" ]; then
+    PROTOCOL="https"
+    DOMAIN="mytrips-api.bahar.co.il"
+    log_info "SSL certificates found, testing HTTPS endpoints..."
+else
+    PROTOCOL="http"
+    DOMAIN="localhost:8000"
+    log_info "No SSL certificates found, testing HTTP endpoints..."
+fi
+
 # Test preflight request
 log_info "Testing preflight request..."
-PREFLIGHT_RESPONSE=$(curl -s -X OPTIONS "http://localhost:8000/health" \
+PREFLIGHT_RESPONSE=$(curl -s -X OPTIONS "$PROTOCOL://$DOMAIN/health" \
     -H "Origin: http://localhost:3500" \
     -H "Access-Control-Request-Method: GET" \
     -w "%{http_code}" -o /dev/null)
@@ -151,7 +162,7 @@ fi
 
 # Test actual request
 log_info "Testing actual API request..."
-API_RESPONSE=$(curl -s "http://localhost:8000/health" \
+API_RESPONSE=$(curl -s "$PROTOCOL://$DOMAIN/health" \
     -H "Origin: http://localhost:3500" \
     -w "%{http_code}" -o /dev/null)
 
@@ -161,12 +172,32 @@ else
     log_warning "API request returned HTTP $API_RESPONSE"
 fi
 
+# Test HTTPS specifically if available
+if [ "$PROTOCOL" = "https" ]; then
+    log_info "Testing HTTP to HTTPS redirect..."
+    REDIRECT_RESPONSE=$(curl -s "http://$DOMAIN/health" \
+        -H "Origin: http://localhost:3500" \
+        -w "%{http_code}" -o /dev/null)
+
+    if [ "$REDIRECT_RESPONSE" = "301" ] || [ "$REDIRECT_RESPONSE" = "302" ]; then
+        log_success "HTTP to HTTPS redirect working (HTTP $REDIRECT_RESPONSE)"
+    else
+        log_warning "HTTP to HTTPS redirect returned HTTP $REDIRECT_RESPONSE"
+    fi
+fi
+
 log_success "🎉 CORS fix completed!"
 log_info ""
 log_info "Next steps:"
-log_info "1. Test from your frontend: fetch('https://mytrips-api.bahar.co.il/health')"
-log_info "2. Check browser network tab for CORS headers"
-log_info "3. Verify no duplicate Access-Control-Allow-Origin headers"
+if [ "$PROTOCOL" = "https" ]; then
+    log_info "1. Test from your frontend: fetch('https://mytrips-api.bahar.co.il/health')"
+    log_info "2. Update frontend to use HTTPS: NEXT_PUBLIC_API_BASE_URL=https://mytrips-api.bahar.co.il"
+else
+    log_info "1. Test from your frontend: fetch('http://mytrips-api.bahar.co.il/health')"
+    log_info "2. To enable HTTPS: sudo /opt/dayplanner/deployment/scripts/enable-ssl.sh"
+fi
+log_info "3. Check browser network tab for CORS headers"
+log_info "4. Verify no duplicate Access-Control-Allow-Origin headers"
 log_info ""
 log_info "If you still have issues:"
 log_info "- Check nginx logs: sudo tail -f /var/log/nginx/mytrips-api_error.log"
