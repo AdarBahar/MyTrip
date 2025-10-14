@@ -1,12 +1,11 @@
 """
 RoadTrip Planner FastAPI Application
 """
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from fastapi.security import HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
@@ -16,40 +15,45 @@ from app.models import Base
 # Import test detection utility to check for configuration leaks
 try:
     from app.core.test_detection import warn_if_test_config_leaked
+
     warn_if_test_config_leaked()
 except ImportError:
     pass  # Test detection utility not available
 
+from app.api.auth.jwt_router import router as jwt_auth_router
+
 # Import routers
 from app.api.auth.router import router as auth_router
-from app.api.auth.jwt_router import router as jwt_auth_router
-from app.api.trips.router import router as trips_router
-from app.api.routing.router import router as routing_router
 from app.api.days.router import router as days_router
-from app.api.stops.router import router as stops_router
-from app.api.places.router import router as places_router
-from app.api.settings.router import router as settings_router
-from app.api.monitoring.router import router as monitoring_router
 from app.api.enums.router import router as enums_router
-# from app.api.pins import router as pins_router
+from app.api.monitoring.router import router as monitoring_router
+from app.api.places.router import router as places_router
+from app.api.routing.router import router as routing_router
+from app.api.settings.router import router as settings_router
+from app.api.stops.router import router as stops_router
+from app.api.trips.router import router as trips_router
 
 # Import exception handlers
 from app.core.exception_handlers import (
-    validation_exception_handler,
+    BusinessRuleViolation,
+    PermissionDeniedError,
+    ResourceNotFoundError,
+    business_rule_violation_handler,
+    general_exception_handler,
     http_exception_handler,
     integrity_error_handler,
-    sqlalchemy_error_handler,
-    general_exception_handler,
-    business_rule_violation_handler,
-    resource_not_found_handler,
     permission_denied_handler,
-    BusinessRuleViolation,
-    ResourceNotFoundError,
-    PermissionDeniedError
+    resource_not_found_handler,
+    sqlalchemy_error_handler,
+    validation_exception_handler,
 )
+
+# from app.api.pins import router as pins_router
+
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+
 
 # Charset middleware to ensure proper UTF-8 encoding
 class CharsetMiddleware(BaseHTTPMiddleware):
@@ -61,6 +65,7 @@ class CharsetMiddleware(BaseHTTPMiddleware):
             response.headers["content-type"] = "application/json; charset=utf-8"
 
         return response
+
 
 app = FastAPI(
     title="MyTrip - Road Trip Planner API",
@@ -552,6 +557,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+
 # Custom OpenAPI schema to add security scheme
 def custom_openapi():
     if app.openapi_schema:
@@ -571,7 +577,7 @@ def custom_openapi():
             "type": "http",
             "scheme": "bearer",
             "bearerFormat": "JWT",
-            "description": "Enter your Bearer token in the format: Bearer <token>"
+            "description": "Enter your Bearer token in the format: Bearer <token>",
         }
     }
 
@@ -580,11 +586,16 @@ def custom_openapi():
         for method, operation in path_item.items():
             if method in ["get", "post", "put", "patch", "delete"]:
                 # Skip auth endpoints from requiring auth
-                if not path.startswith("/auth/login") and not path.startswith("/health") and not path == "/":
+                if (
+                    not path.startswith("/auth/login")
+                    and not path.startswith("/health")
+                    and not path == "/"
+                ):
                     operation["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
 
 app.openapi = custom_openapi
 
@@ -592,7 +603,7 @@ app.openapi = custom_openapi
 app.add_middleware(CharsetMiddleware)
 
 # Configure CORS
-# In dev, loosen CORS to any origin; in other envs, use configured origins
+# In dev, loosen CORS to any origin; in production, let nginx handle CORS
 if settings.APP_ENV.lower() == "dev":
     app.add_middleware(
         CORSMiddleware,
@@ -601,7 +612,37 @@ if settings.APP_ENV.lower() == "dev":
         allow_methods=["*"],
         allow_headers=["*"],
     )
+elif settings.APP_ENV.lower() == "production":
+    # In production, nginx handles CORS to avoid duplicate headers
+    # Only add CORS middleware if nginx is not handling it
+    nginx_handles_cors = True  # Set to False if you want FastAPI to handle CORS
+
+    if not nginx_handles_cors:
+        # Allow localhost for development and production domains
+        allowed_origins = [
+            "http://localhost:3500",
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "https://mytrips.bahar.co.il",
+            "https://www.mytrips.bahar.co.il",
+            "https://bahar.co.il",
+            "https://www.bahar.co.il",
+        ]
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "Accept",
+                "X-Requested-With",
+            ],
+        )
 else:
+    # For other environments, use configured origins
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -629,6 +670,7 @@ async def health_check():
     - Load balancer health checks
     """
     from app.core.config import settings as cfg
+
     return JSONResponse(
         content={
             "status": "healthy",
@@ -646,7 +688,7 @@ async def root():
     return {
         "message": "RoadTrip Planner API",
         "docs": "/docs",
-        "openapi": "/openapi.json"
+        "openapi": "/openapi.json",
     }
 
 
@@ -675,9 +717,5 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
