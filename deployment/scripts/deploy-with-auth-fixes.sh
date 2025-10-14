@@ -171,23 +171,69 @@ test_database_connection() {
 # Test JWT authentication
 test_jwt_authentication() {
     log_info "Testing JWT authentication system..."
-    
+
     cd "$BACKEND_DIR"
-    
+
     # Test JWT imports and functionality
     if sudo -u www-data bash -c "
         source venv/bin/activate
         export \$(cat $ENV_FILE | grep -v '^#' | xargs)
         python -c '
-from app.core.jwt import create_access_token, verify_token
+from app.core.jwt import create_access_token, verify_token, get_password_hash, verify_password
+# Test password hashing
+password = \"test123\"
+hashed = get_password_hash(password)
+verified = verify_password(password, hashed)
+print(f\"Password hashing: {\"✅\" if verified else \"❌\"}\")
+
+# Test JWT tokens
 token = create_access_token(data={\"sub\": \"test_user\"})
 payload = verify_token(token)
+print(f\"JWT tokens: {\"✅\" if payload.get(\"sub\") == \"test_user\" else \"❌\"}\")
 print(\"JWT authentication system working\")
 '
     " 2>/dev/null; then
         log_success "JWT authentication system working"
     else
         log_error "JWT authentication system failed"
+        return 1
+    fi
+}
+
+# Run database migrations
+run_database_migrations() {
+    log_info "Running database migrations..."
+
+    cd "$BACKEND_DIR"
+
+    # Run alembic migrations
+    if sudo -u www-data bash -c "
+        source venv/bin/activate
+        export \$(cat $ENV_FILE | grep -v '^#' | xargs)
+        alembic upgrade head
+    " 2>/dev/null; then
+        log_success "Database migrations completed"
+    else
+        log_error "Database migrations failed"
+        return 1
+    fi
+}
+
+# Create production users
+create_production_users() {
+    log_info "Creating production users with passwords..."
+
+    cd "$BACKEND_DIR"
+
+    # Create production users
+    if sudo -u www-data bash -c "
+        source venv/bin/activate
+        export \$(cat $ENV_FILE | grep -v '^#' | xargs)
+        python scripts/create_production_users.py
+    " 2>/dev/null; then
+        log_success "Production users created"
+    else
+        log_error "Production users creation failed"
         return 1
     fi
 }
@@ -387,6 +433,8 @@ main() {
     configure_environment
     test_database_connection || exit 1
     test_jwt_authentication || exit 1
+    run_database_migrations || exit 1
+    create_production_users || exit 1
     create_systemd_services
     configure_nginx
     start_services

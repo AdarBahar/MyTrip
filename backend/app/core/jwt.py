@@ -126,7 +126,7 @@ def extract_user_id_from_fake_token(token: str) -> str:
             detail="Invalid fake token format",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     user_id = token.replace("fake_token_", "")
     if not user_id:
         raise HTTPException(
@@ -134,5 +134,34 @@ def extract_user_id_from_fake_token(token: str) -> str:
             detail="Empty user ID in fake token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     return user_id
+
+
+def verify_refresh_token(token: str) -> Dict[str, Any]:
+    """Verify JWT refresh token and return payload"""
+    return verify_token(token, token_type="refresh")
+
+
+def decode_token(token: str) -> Dict[str, Any]:
+    """Decode JWT token without verification (for debugging)"""
+    try:
+        return jwt.decode(token, options={"verify_signature": False})
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token format",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def create_token_pair(user_id: str) -> Dict[str, str]:
+    """Create both access and refresh tokens for a user"""
+    access_token = create_access_token(data={"sub": user_id})
+    refresh_token = create_refresh_token(data={"sub": user_id})
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }

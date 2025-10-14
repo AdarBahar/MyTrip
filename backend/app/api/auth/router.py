@@ -69,25 +69,31 @@ async def login(
             detail="Password is required.",
         )
 
-    # TODO: Implement proper password hashing and verification
-    # For now, accept any non-empty password for existing users
-    # This will be enhanced when password hashing is implemented
-    if not login_data.password.strip():
+    # Check if user has a valid password hash
+    if not hasattr(user, 'password_hash') or not user.password_hash:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password. Password cannot be empty.",
+            detail="User account not properly configured. Please contact administrator.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # If user has a password field and it's hashed, verify it
-    if hasattr(user, 'password_hash') and user.password_hash:
+    # Verify password with proper error handling
+    try:
         from app.core.jwt import verify_password
         if not verify_password(login_data.password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password.",
+                detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+    except Exception as e:
+        # Handle invalid password hash format
+        print(f"Password verification error for user {user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account not properly configured. Please contact administrator.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # Create JWT access token
     access_token = create_access_token(data={"sub": user.id})
