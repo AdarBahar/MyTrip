@@ -23,9 +23,10 @@ class Colors:
     NC = '\033[0m'  # No Color
 
 class APITester:
-    def __init__(self, api_base: str = "https://mytrips-api.bahar.co.il", test_email: str = "test@example.com"):
+    def __init__(self, api_base: str = "https://mytrips-api.bahar.co.il", test_email: str = "test@example.com", test_password: str = None):
         self.api_base = api_base.rstrip('/')
         self.test_email = test_email
+        self.test_password = test_password or self._get_default_password(test_email)
         self.token = None
         self.session = requests.Session()
         self.session.timeout = 30
@@ -44,6 +45,15 @@ class APITester:
         # Logging
         self.log_file = f"api_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         self.responses = []
+
+    def _get_default_password(self, email: str) -> str:
+        """Get default password for known test users"""
+        default_passwords = {
+            "test@example.com": "password123",
+            "adar.bahar@gmail.com": "admin123",
+            "admin@mytrips.com": "admin123"
+        }
+        return default_passwords.get(email, "password123")
         
     def log(self, message: str, color: str = ""):
         """Log message to console and file"""
@@ -167,8 +177,8 @@ class APITester:
     def test_authentication(self):
         """Test user authentication"""
         self.test_start("User Authentication")
-        
-        data = {"email": self.test_email}
+
+        data = {"email": self.test_email, "password": self.test_password}
         result = self.make_request('POST', '/auth/login', data=data, auth=False, expected_status=[200])
         
         if result['success'] and result['data'] and 'access_token' in result['data']:
@@ -212,10 +222,16 @@ class APITester:
         }
         
         result = self.make_request('POST', '/trips/', data=trip_data, expected_status=[200, 201])
-        
-        if result['success'] and result['data'] and 'id' in result['data']:
-            self.trip_id = result['data']['id']
-            self.test_pass(f"Trip created successfully (ID: {self.trip_id})")
+
+        if result['success'] and result['data']:
+            # Handle nested trip data structure
+            trip_data_response = result['data'].get('trip', result['data'])
+            if 'id' in trip_data_response:
+                self.trip_id = trip_data_response['id']
+                self.test_pass(f"Trip created successfully (ID: {self.trip_id})")
+            else:
+                self.test_fail("Trip creation failed - no ID in response", result['data'])
+                return False
         else:
             self.test_fail("Trip creation failed", result['error'])
             return False
@@ -254,10 +270,16 @@ class APITester:
         }
         
         result = self.make_request('POST', f'/trips/{self.trip_id}/days/', data=day_data, expected_status=[200, 201])
-        
-        if result['success'] and result['data'] and 'id' in result['data']:
-            self.day_id = result['data']['id']
-            self.test_pass(f"Day created successfully (ID: {self.day_id})")
+
+        if result['success'] and result['data']:
+            # Handle nested day data structure
+            day_data_response = result['data'].get('day', result['data'])
+            if 'id' in day_data_response:
+                self.day_id = day_data_response['id']
+                self.test_pass(f"Day created successfully (ID: {self.day_id})")
+            else:
+                self.test_fail("Day creation failed - no ID in response", result['data'])
+                return False
         else:
             self.test_fail("Day creation failed", result['error'])
             return False
@@ -288,10 +310,16 @@ class APITester:
         }
         
         result = self.make_request('POST', '/stops/', data=stop_data, expected_status=[200, 201])
-        
-        if result['success'] and result['data'] and 'id' in result['data']:
-            self.stop_id = result['data']['id']
-            self.test_pass(f"Stop created successfully (ID: {self.stop_id})")
+
+        if result['success'] and result['data']:
+            # Handle nested stop data structure
+            stop_data_response = result['data'].get('stop', result['data'])
+            if 'id' in stop_data_response:
+                self.stop_id = stop_data_response['id']
+                self.test_pass(f"Stop created successfully (ID: {self.stop_id})")
+            else:
+                self.test_fail("Stop creation failed - no ID in response", result['data'])
+                return False
         else:
             self.test_fail("Stop creation failed", result['error'])
             return False
@@ -383,6 +411,7 @@ class APITester:
         self.log("=" * 50)
         self.log(f"API Base: {self.api_base}")
         self.log(f"Test Email: {self.test_email}")
+        self.log(f"Test Password: {'*' * len(self.test_password)}")
         self.log(f"Log File: {self.log_file}")
         self.log(f"Started: {datetime.now().isoformat()}")
         self.log("")
@@ -442,16 +471,18 @@ class APITester:
 
 def main():
     parser = argparse.ArgumentParser(description='MyTrips API Test Suite')
-    parser.add_argument('--api-base', default='https://mytrips-api.bahar.co.il', 
+    parser.add_argument('--api-base', default='https://mytrips-api.bahar.co.il',
                        help='API base URL')
     parser.add_argument('--email', default='test@example.com',
                        help='Test email for authentication')
-    
+    parser.add_argument('--password', default=None,
+                       help='Test password for authentication (auto-detected if not provided)')
+
     args = parser.parse_args()
-    
-    tester = APITester(api_base=args.api_base, test_email=args.email)
+
+    tester = APITester(api_base=args.api_base, test_email=args.email, test_password=args.password)
     success = tester.run_all_tests()
-    
+
     sys.exit(0 if success else 1)
 
 if __name__ == "__main__":

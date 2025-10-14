@@ -7,8 +7,18 @@
 set -e
 
 # Configuration
-API_BASE="https://mytrips-api.bahar.co.il"
-TEST_EMAIL="test@example.com"
+API_BASE="${API_BASE:-https://mytrips-api.bahar.co.il}"
+TEST_EMAIL="${TEST_EMAIL:-test@example.com}"
+
+# Auto-detect password based on email
+if [ "$TEST_EMAIL" = "adar.bahar@gmail.com" ]; then
+    TEST_PASSWORD="${TEST_PASSWORD:-admin123}"
+elif [ "$TEST_EMAIL" = "admin@mytrips.com" ]; then
+    TEST_PASSWORD="${TEST_PASSWORD:-admin123}"
+else
+    TEST_PASSWORD="${TEST_PASSWORD:-password123}"
+fi
+
 LOG_FILE="api_test_$(date +%Y%m%d_%H%M%S).log"
 
 # Colors for output
@@ -88,6 +98,24 @@ parse_json() {
     echo "$json" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('$key', ''))" 2>/dev/null || echo ""
 }
 
+# Parse nested JSON (e.g., trip.id)
+parse_nested_json() {
+    local json="$1"
+    local path="$2"
+    echo "$json" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+keys = '$path'.split('.')
+for key in keys:
+    if isinstance(data, dict) and key in data:
+        data = data[key]
+    else:
+        print('')
+        sys.exit()
+print(data)
+" 2>/dev/null || echo ""
+}
+
 # Test functions
 test_health() {
     test_start "Health Check"
@@ -134,8 +162,8 @@ test_openapi() {
 
 test_authentication() {
     test_start "User Authentication"
-    
-    local data="{\"email\": \"$TEST_EMAIL\"}"
+
+    local data="{\"email\": \"$TEST_EMAIL\", \"password\": \"$TEST_PASSWORD\"}"
     local result=$(api_request "POST" "/auth/login" "$data")
     local status=$(echo "$result" | cut -d'|' -f1)
     local body=$(echo "$result" | cut -d'|' -f2)
@@ -193,7 +221,12 @@ test_trip_crud() {
     local body=$(echo "$result" | cut -d'|' -f2)
     
     if [ "$status" = "201" ] || [ "$status" = "200" ]; then
-        TRIP_ID=$(parse_json "$body" "id")
+        # Try nested structure first (trip.id), then fallback to direct id
+        TRIP_ID=$(parse_nested_json "$body" "trip.id")
+        if [ "$TRIP_ID" = "" ]; then
+            TRIP_ID=$(parse_json "$body" "id")
+        fi
+
         if [ "$TRIP_ID" != "" ]; then
             test_pass "Trip created successfully (ID: $TRIP_ID)"
         else
@@ -244,7 +277,12 @@ test_day_crud() {
     local body=$(echo "$result" | cut -d'|' -f2)
     
     if [ "$status" = "201" ] || [ "$status" = "200" ]; then
-        DAY_ID=$(parse_json "$body" "id")
+        # Try nested structure first (day.id), then fallback to direct id
+        DAY_ID=$(parse_nested_json "$body" "day.id")
+        if [ "$DAY_ID" = "" ]; then
+            DAY_ID=$(parse_json "$body" "id")
+        fi
+
         if [ "$DAY_ID" != "" ]; then
             test_pass "Day created successfully (ID: $DAY_ID)"
         else
@@ -284,7 +322,12 @@ test_stop_crud() {
     local body=$(echo "$result" | cut -d'|' -f2)
     
     if [ "$status" = "201" ] || [ "$status" = "200" ]; then
-        STOP_ID=$(parse_json "$body" "id")
+        # Try nested structure first (stop.id), then fallback to direct id
+        STOP_ID=$(parse_nested_json "$body" "stop.id")
+        if [ "$STOP_ID" = "" ]; then
+            STOP_ID=$(parse_json "$body" "id")
+        fi
+
         if [ "$STOP_ID" != "" ]; then
             test_pass "Stop created successfully (ID: $STOP_ID)"
         else
@@ -376,6 +419,7 @@ main() {
     log "========================================"
     log "API Base: $API_BASE"
     log "Test Email: $TEST_EMAIL"
+    log "Test Password: $(echo "$TEST_PASSWORD" | sed 's/./*/g')"
     log "Log File: $LOG_FILE"
     log "Started: $(date)"
     log ""
