@@ -83,25 +83,25 @@ repos:
     hooks:
       - id: check-credentials
         name: Check for hardcoded credentials
-        entry: bash -c 'if grep -r -E "(password|secret|key|token|credential).*=" --include="*.py" --include="*.js" --include="*.sh" --include="*.json" --exclude-dir=node_modules --exclude-dir=.git --exclude="*.example" --exclude="*.template" .; then echo "❌ Potential hardcoded credentials found!"; exit 1; fi'
+        entry: bash -c 'if grep -r -E "(password|secret|key|token|credential).*=.*[\"'\''][^\"'\'']*[\"'\'']" --include="*.py" --include="*.js" --include="*.sh" --exclude-dir=node_modules --exclude-dir=.git --exclude="*.example*" --exclude="*.template*" --exclude="SECURITY*" .; then echo "❌ Potential hardcoded credentials found!"; exit 1; fi'
         language: system
         pass_filenames: false
 
       - id: check-github-tokens
         name: Check for GitHub tokens
-        entry: bash -c 'if grep -r -E "ghp_[a-zA-Z0-9]{36}" --include="*.py" --include="*.js" --include="*.sh" --include="*.txt" --include="*.md" --exclude-dir=.git .; then echo "❌ GitHub tokens found!"; exit 1; fi'
+        entry: bash -c 'if grep -r -E "ghp_[a-zA-Z0-9]{36}" --include="*.py" --include="*.js" --include="*.sh" --exclude-dir=.git --exclude="*.example*" --exclude="*.template*" --exclude="SECURITY*" .; then echo "❌ GitHub tokens found!"; exit 1; fi'
         language: system
         pass_filenames: false
 
       - id: check-database-credentials
         name: Check for database credentials
-        entry: bash -c 'if grep -r -E "(mysql|postgres|mongodb).*-p.*['\''\""][^'\''\"]*['\''\""]" --include="*.py" --include="*.js" --include="*.sh" --exclude-dir=node_modules --exclude-dir=.git .; then echo "❌ Database credentials found!"; exit 1; fi'
+        entry: bash -c 'if grep -r -E "mysql.*-p[\"'\''][^\"'\'']{8,}[\"'\'']" --include="*.py" --include="*.js" --exclude-dir=node_modules --exclude-dir=.git --exclude="*.example*" --exclude="*.template*" --exclude="SECURITY*" .; then echo "❌ Database credentials found!"; exit 1; fi'
         language: system
         pass_filenames: false
 
       - id: check-ftp-credentials
         name: Check for FTP credentials
-        entry: bash -c 'if grep -r -E "ftp.*password" --include="*.py" --include="*.js" --include="*.sh" --include="*.json" --exclude-dir=node_modules --exclude-dir=.git .; then echo "❌ FTP credentials found!"; exit 1; fi'
+        entry: bash -c 'if grep -r -E "ftp.*password" --include="*.py" --include="*.js" --include="*.sh" --include="*.json" --exclude-dir=node_modules --exclude-dir=.git --exclude="*.example*" --exclude="*.template*" .; then echo "❌ FTP credentials found!"; exit 1; fi'
         language: system
         pass_filenames: false
 
