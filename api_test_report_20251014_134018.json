@@ -1,0 +1,72 @@
+{
+  "test_summary": {
+    "total_tests": 11,
+    "passed": 6,
+    "failed": 3,
+    "warnings": 1,
+    "success_rate": 54.55
+  },
+  "test_config": {
+    "api_base": "https://mytrips-api.bahar.co.il",
+    "test_email": "adar.bahar@gmail.com",
+    "timestamp": "2025-10-14T13:40:18.893699"
+  },
+  "responses": [
+    {
+      "timestamp": "2025-10-14T13:40:13.820792",
+      "method": "GET",
+      "url": "https://mytrips-api.bahar.co.il/health",
+      "status_code": 200,
+      "response": "{\"status\":\"healthy\",\"service\":\"roadtrip-planner-backend\",\"version\":\"1.0.0\",\"routing_mode\":\"cloud\",\"use_cloud_matrix\":true}"
+    },
+    {
+      "timestamp": "2025-10-14T13:40:13.928555",
+      "method": "GET",
+      "url": "https://mytrips-api.bahar.co.il/docs",
+      "status_code": 200,
+      "response": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <link type=\"text/css\" rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css\">\n    <link rel=\"shortcut icon\" href=\"https://fastapi.tiangolo.com/img/favicon.png\">\n    <title>MyTrip - Road Trip Planner API - Swagger UI</title>\n    </head>\n    <body>\n    <div id=\"swagger-ui\">\n    </div>\n    <script src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js\"></script>\n    <!-- `SwaggerUIBundle` is now available on the page -->\n    <script>\n    const ui = SwaggerUIBundle({\n        url: '/openapi.json',\n    \"dom_id\": \"#swagger-ui\",\n\"layout\": \"BaseLayout\",\n\"deepLinking\": true,\n\"showExtensions\": true,\n\"showCommonExtensions\": true,\noauth2RedirectUrl: window.location.origin + '/docs/oauth2-redirect',\n    presets: [\n        SwaggerUIBundle.presets.apis,\n        SwaggerUIBundle.SwaggerUIStandalonePreset\n        ],\n    })\n    </script>\n    </body>\n    </html>\n    "
+    },
+    {
+      "timestamp": "2025-10-14T13:40:14.343862",
+      "method": "GET",
+      "url": "https://mytrips-api.bahar.co.il/openapi.json",
+      "status_code": 200,
+      "response": "{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"MyTrip - Road Trip Planner API\",\"description\":\"\\n    A comprehensive road trip planning API with intelligent route optimization, enhanced error handling, and user authentication.\\n\\n    ## \ud83d\ude80 Features\\n\\n    - \u2705 **Trip Management**: Create, view, and manage road trips with enhanced validation\\n    - \u2705 **Days Organization**: Day-by-day trip planning with automatic date calculation\\n    - \u2705 **Stops Management**: Comprehensive stops system with 12 categories and detailed planning\\n    - \u2705 **Intelligent Routing**: Hybrid GraphHopper routing with automatic fallback\\n    - \u2705 **Places API with Type-ahead**: Fast, accurate search for addresses and POIs with real-time suggestions\\n    - \u2705 **Enhanced Error Handling**: Actionable error messages with recovery guidance\\n    - \u2705 **Place Search Caching**: Aggressive caching for improved performance\\n    - \u2705 **Rate Limit Management**: Exponential backoff and circuit breaker patterns\\n    - \u2705 **Modern Pagination**: Na"
+    },
+    {
+      "timestamp": "2025-10-14T13:40:16.341031",
+      "method": "POST",
+      "url": "https://mytrips-api.bahar.co.il/auth/login",
+      "status_code": 200,
+      "response": "{\"access_token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMUs1UDY4MzI5WUZTQ1RWNzc3RUI0R005UCIsImV4cCI6MTc2MDQ0MDIxNiwiaWF0IjoxNzYwNDM4NDE2LCJ0eXBlIjoiYWNjZXNzIn0.Lu-JfPT4oEwQDFvYssWYbMRfn6Ia_r6MAxN5e-MeiIs\",\"refresh_token\":null,\"token_type\":\"bearer\",\"expires_in\":null,\"user\":{\"id\":\"01K5P68329YFSCTV777EB4GM9P\",\"email\":\"adar.bahar@gmail.com\",\"display_name\":\"Adar Bahar\",\"status\":\"active\"}}"
+    },
+    {
+      "timestamp": "2025-10-14T13:40:17.326845",
+      "method": "GET",
+      "url": "https://mytrips-api.bahar.co.il/trips/",
+      "status_code": 200,
+      "response": "{\"data\":[{\"deleted_at\":null,\"created_at\":\"2025-09-22T12:36:35Z\",\"updated_at\":\"2025-10-07T15:49:50Z\",\"id\":\"01K5RPT2HKFSMBAEDXKJ7K8E99\",\"slug\":\"test1\",\"title\":\"Test1\",\"destination\":\"Israel\",\"start_date\":null,\"timezone\":\"UTC\",\"status\":\"draft\",\"is_published\":false,\"created_by\":\"01K5P68329YFSCTV777EB4GM9P\",\"members\":[],\"created_by_user\":{\"id\":\"01K5P68329YFSCTV777EB4GM9P\",\"email\":\"adar.bahar@gmail.com\",\"display_name\":\"Adar Bahar\"}},{\"deleted_at\":null,\"created_at\":\"2025-10-05T19:03:47Z\",\"updated_at\":\"2025-10-05T19:03:47Z\",\"id\":\"0000T3O4QB0000000000V3YQRE\",\"slug\":\"test-suite-trip-1759683827\",\"title\":\"Test Suite Trip 1759683827\",\"destination\":\"Created by automated test suite\",\"start_date\":\"2024-12-01\",\"timezone\":\"UTC\",\"status\":\"draft\",\"is_published\":false,\"created_by\":\"01K5P68329YFSCTV777EB4GM9P\",\"members\":[],\"created_by_user\":{\"id\":\"01K5P68329YFSCTV777EB4GM9P\",\"email\":\"adar.bahar@gmail.com\",\"display_name\":\"Adar Bahar\"}},{\"deleted_at\":null,\"created_at\":\"2025-10-05T19:04:54Z\",\"updated_at\":\"2025-"
+    },
+    {
+      "timestamp": "2025-10-14T13:40:18.444753",
+      "method": "POST",
+      "url": "https://mytrips-api.bahar.co.il/trips/",
+      "status_code": 201,
+      "response": "{\"trip\":{\"deleted_at\":null,\"created_at\":\"2025-10-14T10:40:18Z\",\"updated_at\":\"2025-10-14T10:40:18Z\",\"id\":\"01K7H4WYN65QVGS8RWPR54KC69\",\"slug\":\"api-test-trip\",\"title\":\"API Test Trip\",\"destination\":\"Jerusalem, Israel\",\"start_date\":null,\"timezone\":null,\"status\":\"draft\",\"is_published\":false,\"created_by\":\"01K5P68329YFSCTV777EB4GM9P\",\"members\":[],\"created_by_user\":{\"id\":\"01K5P68329YFSCTV777EB4GM9P\",\"email\":\"adar.bahar@gmail.com\",\"display_name\":\"Adar Bahar\"}},\"next_steps\":[\"Set your trip start date to help with planning\",\"Create your first day in Jerusalem, Israel\",\"Invite travel companions to collaborate on the trip\"],\"suggestions\":{\"popular_destinations\":[\"Consider adding multiple days to explore the region thoroughly\",\"Research local attractions and restaurants for your itinerary\"]}}"
+    },
+    {
+      "timestamp": "2025-10-14T13:40:18.780477",
+      "method": "GET",
+      "url": "https://mytrips-api.bahar.co.il/places/search?query=Jerusalem",
+      "status_code": 200,
+      "response": "{\"places\":[],\"total\":0}"
+    },
+    {
+      "timestamp": "2025-10-14T13:40:18.888260",
+      "method": "GET",
+      "url": "https://mytrips-api.bahar.co.il/settings/user",
+      "status_code": 404,
+      "response": "{\"detail\":\"Not Found\"}"
+    }
+  ]
+}

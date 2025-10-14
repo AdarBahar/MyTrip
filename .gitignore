@@ -135,3 +135,67 @@ Thumbs.db
 # Backup files
 *.bak
 *.backup
+
+# SECURITY: Never commit sensitive files
+*credentials*
+*secrets*
+*password*
+*.key
+*.pem
+*.p12
+*.pfx
+ftp_credentials.json
+database_credentials.json
+api_keys.json
+*_with_password.sh
+*_with_credentials.sh
+cleanup_production_*.py
+apply_auth_with_password.sh
+
+# GitHub tokens and API keys
+ghp_*
+github_token*
+api_token*
+access_token*
+
+# Database credentials
+mysql_credentials*
+db_password*
+database_config*
+
+# FTP/SSH credentials
+ftp_config*
+ssh_keys*
+private_key*
+
+# Production deployment files with credentials
+deployment/production/credentials/
+deployment/production/secrets/
+deployment/production/.env*
+deployment/production/database.json
+deployment/production/ftp.json
+deployment/production/api_keys.json
+
+# Reports with sensitive data
+.reports/*/artifacts.json
+.reports/*/credentials.json
+
+# Certificates and keys
+*.crt
+*.cert
+*.ca-bundle
+*.p7b
+*.p7s
+*.spc
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+known_hosts
+authorized_keys
+
+# Cloud credentials
+.aws/
+aws-credentials.json
+gcloud-credentials.json
+service-account.json
