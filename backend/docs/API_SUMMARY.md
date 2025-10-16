@@ -29,7 +29,7 @@
 ## 📋 Endpoint Categories
 
 - **Auth**: 3 endpoints
-- **Days**: 8 endpoints
+- **Days**: 9 endpoints (includes new complete endpoint)
 - **Enums**: 5 endpoints
 - **Monitoring**: 8 endpoints
 - **Places**: 12 endpoints (includes geocoding endpoints)
@@ -37,9 +37,39 @@
 - **Routing**: 9 endpoints
 - **Settings**: 2 endpoints
 - **Stops**: 12 endpoints
-- **Trips**: 9 endpoints
+- **Trips**: 10 endpoints (includes new complete endpoint and short format)
 
-## 🗺️ New Geocoding Features
+## 🚀 New Complete Data Endpoints
+
+### Complete Trip Data
+- **GET /trips/{trip_id}/complete** - Get complete trip with all days and stops
+- **GET /trips/{trip_id}/days/complete** - Get all days with all stops for a trip
+- Single request for complete nested data structure
+- Eliminates need for multiple API calls
+- Optimized performance with eager loading
+- Proper ordering: days by sequence, stops by sequence within each day
+
+### Benefits
+- **Reduced Network Requests**: 1 request instead of N+2 requests
+- **Better Performance**: Single optimized database query
+- **Atomic Data**: Consistent snapshot of trip data
+- **Simplified Client Code**: No complex data merging logic required
+
+## 📋 New Short Format for Trip Listing
+
+### Short Format Response
+- **GET /trips?format=short** - Compact trip listing with day summaries
+- Includes basic trip info plus day-by-day breakdown
+- Shows start/end status and stop counts for each day
+- Perfect for trip overview interfaces and mobile apps
+
+### Short Format Features
+- **Compact Data**: Essential trip info with day summaries
+- **Day Breakdown**: Each day shows sequence, start/end status, and stop count
+- **Mobile Optimized**: Reduced payload size for mobile applications
+- **Quick Overview**: Instant visibility into trip structure
+
+## 🗺️ Geocoding Features
 
 ### Forward Geocoding
 - **GET /places/geocode** - Convert addresses to coordinates using MapTiler API

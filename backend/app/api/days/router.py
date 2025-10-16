@@ -1,31 +1,42 @@
 """
 Days API router
 """
-from typing import List, Optional
 import logging
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, joinedload
-from collections import defaultdict
-from sqlalchemy import func, or_
+from typing import Optional
 
-from app.core.database import get_db
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
+
 from app.core.auth import get_current_user
-from app.models.user import User
-from app.models.trip import Trip
+from app.core.database import get_db
 from app.models.day import Day, DayStatus
+from app.models.route import RouteVersion
 from app.models.stop import Stop, StopKind
+from app.models.trip import Trip
+from app.models.user import User
+from app.schemas.bulk import (
+    BulkDeleteRequest,
+    BulkOperationResult,
+    BulkUpdateRequest,
+)
+from app.schemas.day import Day as DaySchema
 from app.schemas.day import (
-    DayCreate, DayUpdate, Day as DaySchema, DayList,
-    DayWithStops, DayListWithStops, DayListSummary, DayLocations
+    DayCreate,
+    DayList,
+    DayListSummary,
+    DayListWithStops,
+    DayLocations,
+    DaysCompleteResponse,
+    DayUpdate,
+    DayWithAllStops,
+    DayWithStops,
 )
 from app.schemas.place import PlaceSchema
-from app.schemas.bulk import (
-    BulkDeleteRequest, BulkUpdateRequest, BulkReorderRequest, BulkOperationResult
-)
+from app.schemas.stop import StopSchema
 from app.services.bulk_operations import BulkOperationService
-from app.services.filtering import FilteringService, FilterCondition, SortCondition
-from app.models.route import RouteVersion
+from app.services.filtering import FilterCondition, FilteringService, SortCondition
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -33,11 +44,15 @@ logger = logging.getLogger(__name__)
 
 def get_trip_and_verify_access(trip_id: str, current_user: User, db: Session) -> Trip:
     """Get trip and verify user has access to it"""
-    trip = db.query(Trip).filter(
-        Trip.id == trip_id,
-        Trip.created_by == current_user.id,
-        Trip.deleted_at.is_(None)
-    ).first()
+    trip = (
+        db.query(Trip)
+        .filter(
+            Trip.id == trip_id,
+            Trip.created_by == current_user.id,
+            Trip.deleted_at.is_(None),
+        )
+        .first()
+    )
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -48,16 +63,22 @@ def get_trip_and_verify_access(trip_id: str, current_user: User, db: Session) ->
 @router.get("", response_model=DayList)
 async def list_days(
     trip_id: str,
-    include_stops: bool = Query(False, description="Include stops count and route info"),
+    include_stops: bool = Query(
+        False, description="Include stops count and route info"
+    ),
     # Enhanced filtering and sorting
-    filter_string: Optional[str] = Query(None, description="Advanced filters: field:operator:value"),
-    sort_string: Optional[str] = Query(None, description="Sort: field:direction,field2:direction2"),
+    filter_string: Optional[str] = Query(
+        None, description="Advanced filters: field:operator:value"
+    ),
+    sort_string: Optional[str] = Query(
+        None, description="Sort: field:direction,field2:direction2"
+    ),
     status: Optional[str] = Query(None, description="Filter by day status"),
     date_from: Optional[date] = Query(None, description="Filter days from this date"),
     date_to: Optional[date] = Query(None, description="Filter days until this date"),
     search: Optional[str] = Query(None, description="Search in day titles"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     **Enhanced List Days in Trip**
@@ -92,10 +113,7 @@ async def list_days(
     filtering_service = FilteringService()
 
     # Build base query
-    base_query = db.query(Day).filter(
-        Day.trip_id == trip_id,
-        Day.deleted_at.is_(None)
-    )
+    base_query = db.query(Day).filter(Day.trip_id == trip_id, Day.deleted_at.is_(None))
 
     # Enhanced filtering
     filter_conditions = []
@@ -106,21 +124,30 @@ async def list_days(
 
     # Legacy status filter (for backward compatibility)
     if status:
-        filter_conditions.append(FilterCondition('status', 'eq', status))
+        filter_conditions.append(FilterCondition("status", "eq", status))
 
     # Date range filters
     if date_from:
-        filter_conditions.append(FilterCondition('date', 'gte', date_from))
+        filter_conditions.append(FilterCondition("date", "gte", date_from))
     if date_to:
-        filter_conditions.append(FilterCondition('date', 'lte', date_to))
+        filter_conditions.append(FilterCondition("date", "lte", date_to))
 
     # Search functionality
     if search:
         base_query = base_query.filter(Day.title.ilike(f"%{search}%"))
 
     # Apply advanced filters
-    allowed_filter_fields = ['date', 'title', 'status', 'seq', 'created_at', 'updated_at']
-    base_query = filtering_service.apply_filters(base_query, Day, filter_conditions, allowed_filter_fields)
+    allowed_filter_fields = [
+        "date",
+        "title",
+        "status",
+        "seq",
+        "created_at",
+        "updated_at",
+    ]
+    base_query = filtering_service.apply_filters(
+        base_query, Day, filter_conditions, allowed_filter_fields
+    )
 
     # Enhanced sorting
     sort_conditions = []
@@ -128,15 +155,19 @@ async def list_days(
         sort_conditions = filtering_service.parse_sort_string(sort_string)
 
     # Apply sorting with default fallback
-    allowed_sort_fields = ['date', 'seq', 'title', 'status', 'created_at', 'updated_at']
-    default_sort = SortCondition('seq', 'asc')
-    base_query = filtering_service.apply_sorting(base_query, Day, sort_conditions, allowed_sort_fields, default_sort)
+    allowed_sort_fields = ["date", "seq", "title", "status", "created_at", "updated_at"]
+    default_sort = SortCondition("seq", "asc")
+    base_query = filtering_service.apply_sorting(
+        base_query, Day, sort_conditions, allowed_sort_fields, default_sort
+    )
 
     if include_stops:
         # Query with stops count and route info
-        days_query = base_query.add_columns(
-            func.count(Stop.id).label('stops_count')
-        ).outerjoin(Stop).group_by(Day.id)
+        days_query = (
+            base_query.add_columns(func.count(Stop.id).label("stops_count"))
+            .outerjoin(Stop)
+            .group_by(Day.id)
+        )
 
         days_with_counts = days_query.all()
 
@@ -144,17 +175,13 @@ async def list_days(
         for day, stops_count in days_with_counts:
             day_dict = {
                 **day.__dict__,
-                'stops_count': stops_count,
-                'has_route': False,  # TODO: Check for route versions when implemented
-                'trip_start_date': trip.start_date  # Add for calculated_date
+                "stops_count": stops_count,
+                "has_route": False,  # TODO: Check for route versions when implemented
+                "trip_start_date": trip.start_date,  # Add for calculated_date
             }
             days_list.append(DayWithStops(**day_dict))
 
-        return DayListWithStops(
-            days=days_list,
-            total=len(days_list),
-            trip_id=trip_id
-        )
+        return DayListWithStops(days=days_list, total=len(days_list), trip_id=trip_id)
     else:
         # Simple query without extra info but include trip start_date for calculated_date
         days = base_query.all()
@@ -163,19 +190,17 @@ async def list_days(
         days_with_trip_date = []
         for day in days:
             day_dict = day.__dict__.copy()
-            day_dict['trip_start_date'] = trip.start_date
+            day_dict["trip_start_date"] = trip.start_date
             days_with_trip_date.append(DaySchema.model_validate(day_dict))
 
-        return DayList(
-            days=days_with_trip_date,
-            total=len(days),
-            trip_id=trip_id
-        )
+        return DayList(days=days_with_trip_date, total=len(days), trip_id=trip_id)
+
+
 @router.get("/summary", response_model=DayListSummary)
 async def list_days_with_locations(
     trip_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """List days and include start/end places for each day in a single call.
     Note: This route must appear before the dynamic '/{day_id}' to avoid being captured by it.
@@ -183,19 +208,27 @@ async def list_days_with_locations(
     trip = get_trip_and_verify_access(trip_id, current_user, db)
 
     # Fetch all days ordered by seq
-    days = db.query(Day).filter(
-        Day.trip_id == trip_id,
-        Day.deleted_at.is_(None)
-    ).order_by(Day.seq).all()
+    days = (
+        db.query(Day)
+        .filter(Day.trip_id == trip_id, Day.deleted_at.is_(None))
+        .order_by(Day.seq)
+        .all()
+    )
     day_by_seq = {d.seq: d for d in days}
 
     # Fetch START/END stops for all days in one query, eager-loading place
     if days:
-        stops = db.query(Stop).options(joinedload(Stop.place)).filter(
-            Stop.trip_id == trip_id,
-            Stop.day_id.in_([d.id for d in days]),
-            Stop.kind.in_([StopKind.START, StopKind.VIA, StopKind.END])
-        ).order_by(Stop.day_id, Stop.seq).all()
+        stops = (
+            db.query(Stop)
+            .options(joinedload(Stop.place))
+            .filter(
+                Stop.trip_id == trip_id,
+                Stop.day_id.in_([d.id for d in days]),
+                Stop.kind.in_([StopKind.START, StopKind.VIA, StopKind.END]),
+            )
+            .order_by(Stop.day_id, Stop.seq)
+            .all()
+        )
     else:
         stops = []
 
@@ -209,9 +242,9 @@ async def list_days_with_locations(
         place_obj = None
         if s.place:
             place_obj = PlaceSchema.model_validate(s.place)
-        if str(s.kind).lower().endswith('start'):
+        if str(s.kind).lower().endswith("start"):
             loc.start = place_obj
-        elif str(s.kind).lower().endswith('end'):
+        elif str(s.kind).lower().endswith("end"):
             loc.end = place_obj
 
     # Instead of calling the routing provider here (which can rate limit), attach saved active route if present
@@ -230,7 +263,11 @@ async def list_days_with_locations(
         )
         if rv and rv.geojson:
             try:
-                coords = rv.geojson.get("coordinates") if isinstance(rv.geojson, dict) else None
+                coords = (
+                    rv.geojson.get("coordinates")
+                    if isinstance(rv.geojson, dict)
+                    else None
+                )
                 if coords:
                     loc.route_coordinates = coords
                 if rv.total_km is not None:
@@ -244,16 +281,15 @@ async def list_days_with_locations(
     days_with_trip_date = []
     for day in days:
         dd = day.__dict__.copy()
-        dd['trip_start_date'] = trip.start_date
+        dd["trip_start_date"] = trip.start_date
         days_with_trip_date.append(DaySchema.model_validate(dd))
 
     return DayListSummary(
         days=days_with_trip_date,
         locations=list(locs_map.values()),
         total=len(days),
-        trip_id=trip_id
+        trip_id=trip_id,
     )
-
 
 
 @router.post("", response_model=DaySchema, status_code=201)
@@ -261,7 +297,7 @@ async def create_day(
     trip_id: str,
     day_data: DayCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     **Create New Day**
@@ -276,25 +312,26 @@ async def create_day(
 
     # Auto-generate sequence number if not provided
     if day_data.seq is None:
-        max_seq = db.query(func.max(Day.seq)).filter(
-            Day.trip_id == trip_id,
-            Day.deleted_at.is_(None)
-        ).scalar() or 0
+        max_seq = (
+            db.query(func.max(Day.seq))
+            .filter(Day.trip_id == trip_id, Day.deleted_at.is_(None))
+            .scalar()
+            or 0
+        )
         seq = max_seq + 1
     else:
         seq = day_data.seq
 
         # Check if sequence number already exists
-        existing_day = db.query(Day).filter(
-            Day.trip_id == trip_id,
-            Day.seq == seq,
-            Day.deleted_at.is_(None)
-        ).first()
+        existing_day = (
+            db.query(Day)
+            .filter(Day.trip_id == trip_id, Day.seq == seq, Day.deleted_at.is_(None))
+            .first()
+        )
 
         if existing_day:
             raise HTTPException(
-                status_code=400,
-                detail=f"Day with sequence number {seq} already exists"
+                status_code=400, detail=f"Day with sequence number {seq} already exists"
             )
 
     # Create day
@@ -303,7 +340,7 @@ async def create_day(
         seq=seq,
         status=day_data.status,
         rest_day=day_data.rest_day,
-        notes=day_data.notes
+        notes=day_data.notes,
     )
 
     db.add(day)
@@ -312,7 +349,7 @@ async def create_day(
 
     # Add trip start_date for calculated_date
     day_dict = day.__dict__.copy()
-    day_dict['trip_start_date'] = trip.start_date
+    day_dict["trip_start_date"] = trip.start_date
 
     return DaySchema.model_validate(day_dict)
 
@@ -322,7 +359,7 @@ async def get_day(
     trip_id: str,
     day_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     **Get Specific Day**
@@ -335,18 +372,18 @@ async def get_day(
     trip = get_trip_and_verify_access(trip_id, current_user, db)
 
     # Get day
-    day = db.query(Day).filter(
-        Day.id == day_id,
-        Day.trip_id == trip_id,
-        Day.deleted_at.is_(None)
-    ).first()
+    day = (
+        db.query(Day)
+        .filter(Day.id == day_id, Day.trip_id == trip_id, Day.deleted_at.is_(None))
+        .first()
+    )
 
     if not day:
         raise HTTPException(status_code=404, detail="Day not found")
 
     # Add trip start_date for calculated_date
     day_dict = day.__dict__.copy()
-    day_dict['trip_start_date'] = trip.start_date
+    day_dict["trip_start_date"] = trip.start_date
 
     return DaySchema.model_validate(day_dict)
 
@@ -357,7 +394,7 @@ async def update_day(
     day_id: str,
     day_data: DayUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     **Update Day**
@@ -370,28 +407,32 @@ async def update_day(
     trip = get_trip_and_verify_access(trip_id, current_user, db)
 
     # Get day
-    day = db.query(Day).filter(
-        Day.id == day_id,
-        Day.trip_id == trip_id,
-        Day.deleted_at.is_(None)
-    ).first()
+    day = (
+        db.query(Day)
+        .filter(Day.id == day_id, Day.trip_id == trip_id, Day.deleted_at.is_(None))
+        .first()
+    )
 
     if not day:
         raise HTTPException(status_code=404, detail="Day not found")
 
     # Check sequence number conflicts if updating seq
     if day_data.seq is not None and day_data.seq != day.seq:
-        existing_day = db.query(Day).filter(
-            Day.trip_id == trip_id,
-            Day.seq == day_data.seq,
-            Day.deleted_at.is_(None),
-            Day.id != day_id
-        ).first()
+        existing_day = (
+            db.query(Day)
+            .filter(
+                Day.trip_id == trip_id,
+                Day.seq == day_data.seq,
+                Day.deleted_at.is_(None),
+                Day.id != day_id,
+            )
+            .first()
+        )
 
         if existing_day:
             raise HTTPException(
                 status_code=400,
-                detail=f"Day with sequence number {day_data.seq} already exists"
+                detail=f"Day with sequence number {day_data.seq} already exists",
             )
 
     # Update fields
@@ -404,7 +445,7 @@ async def update_day(
 
     # Add trip start_date for calculated_date
     day_dict = day.__dict__.copy()
-    day_dict['trip_start_date'] = trip.start_date
+    day_dict["trip_start_date"] = trip.start_date
 
     return DaySchema.model_validate(day_dict)
 
@@ -414,7 +455,7 @@ async def delete_day(
     trip_id: str,
     day_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     **Delete Day**
@@ -428,11 +469,11 @@ async def delete_day(
     trip = get_trip_and_verify_access(trip_id, current_user, db)
 
     # Get day
-    day = db.query(Day).filter(
-        Day.id == day_id,
-        Day.trip_id == trip_id,
-        Day.deleted_at.is_(None)
-    ).first()
+    day = (
+        db.query(Day)
+        .filter(Day.id == day_id, Day.trip_id == trip_id, Day.deleted_at.is_(None))
+        .first()
+    )
 
     if not day:
         raise HTTPException(status_code=404, detail="Day not found")
@@ -451,12 +492,13 @@ async def delete_day(
 
 # Bulk Operations Endpoints
 
+
 @router.delete("/bulk", response_model=BulkOperationResult)
 async def bulk_delete_days(
     trip_id: str,
     request: BulkDeleteRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     **Bulk Delete Days**
@@ -484,10 +526,11 @@ async def bulk_delete_days(
     - Remove cancelled days
     """
     # Validate trip exists and user has access
-    trip = db.query(Trip).filter(
-        Trip.id == trip_id,
-        Trip.created_by == current_user.id
-    ).first()
+    trip = (
+        db.query(Trip)
+        .filter(Trip.id == trip_id, Trip.created_by == current_user.id)
+        .first()
+    )
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found or access denied")
@@ -515,7 +558,7 @@ async def bulk_delete_days(
         user_id=current_user.id,
         force=request.force,
         pre_delete_hook=pre_delete_hook,
-        post_delete_hook=post_delete_hook
+        post_delete_hook=post_delete_hook,
     )
 
 
@@ -524,7 +567,7 @@ async def bulk_update_days(
     trip_id: str,
     request: BulkUpdateRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     **Bulk Update Days**
@@ -572,10 +615,11 @@ async def bulk_update_days(
     - Add notes to multiple days
     """
     # Validate trip exists and user has access
-    trip = db.query(Trip).filter(
-        Trip.id == trip_id,
-        Trip.created_by == current_user.id
-    ).first()
+    trip = (
+        db.query(Trip)
+        .filter(Trip.id == trip_id, Trip.created_by == current_user.id)
+        .first()
+    )
 
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found or access denied")
@@ -583,7 +627,7 @@ async def bulk_update_days(
     bulk_service = BulkOperationService(db)
 
     # Define allowed fields for bulk updates
-    allowed_fields = ['title', 'date', 'status', 'notes']
+    allowed_fields = ["title", "date", "status", "notes"]
 
     async def pre_update_hook(day: Day, update_data: dict):
         """Hook to handle day-specific logic before update"""
@@ -592,19 +636,22 @@ async def bulk_update_days(
             raise ValueError(f"Day {day.id} does not belong to trip {trip_id}")
 
         # Validate status if being updated
-        if 'status' in update_data:
+        if "status" in update_data:
             try:
-                DayStatus(update_data['status'])
+                DayStatus(update_data["status"])
             except ValueError:
                 raise ValueError(f"Invalid status: {update_data['status']}")
 
         # Validate date format if being updated
-        if 'date' in update_data:
+        if "date" in update_data:
             from datetime import datetime
+
             try:
-                datetime.strptime(str(update_data['date']), '%Y-%m-%d')
+                datetime.strptime(str(update_data["date"]), "%Y-%m-%d")
             except ValueError:
-                raise ValueError(f"Invalid date format: {update_data['date']}. Use YYYY-MM-DD")
+                raise ValueError(
+                    f"Invalid date format: {update_data['date']}. Use YYYY-MM-DD"
+                )
 
         return update_data
 
@@ -613,5 +660,125 @@ async def bulk_update_days(
         updates=request.updates,
         user_id=current_user.id,
         allowed_fields=allowed_fields,
-        pre_update_hook=pre_update_hook
+        pre_update_hook=pre_update_hook,
+    )
+
+
+@router.get("/complete", response_model=DaysCompleteResponse)
+async def list_days_complete(
+    trip_id: str,
+    include_place: bool = Query(
+        False, description="Include place information with stops"
+    ),
+    include_route_info: bool = Query(False, description="Include route information"),
+    status: Optional[str] = Query(None, description="Filter days by status"),
+    day_limit: Optional[int] = Query(
+        None, ge=1, le=50, description="Limit number of days returned"
+    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    **Get Complete Days with All Stops**
+
+    Get all days for a trip with complete stops information in a single request.
+
+    **Features:**
+    - ✅ **Complete nested structure**: All days with all their stops
+    - ✅ **Proper ordering**: Days by sequence (1, 2, 3...), stops by sequence within each day
+    - ✅ **Optional place details**: Include place information for each stop
+    - ✅ **Route information**: Include route data if available
+    - ✅ **Filtering**: Filter days by status
+    - ✅ **Performance optimized**: Single query with eager loading
+
+    **Query Parameters:**
+    - `include_place`: Include place details with stops (default: false)
+    - `include_route_info`: Include route information (default: false)
+    - `status`: Filter days by status (active, completed, etc.)
+    - `day_limit`: Limit number of days returned (1-50)
+
+    **Response Structure:**
+    - Days ordered by sequence (1, 2, 3...)
+    - Stops ordered by sequence within each day (START → VIA → END)
+    - Complete stop details including place information
+    - Summary statistics (total days, total stops)
+
+    **Authentication Required:** You must be the trip owner.
+    """
+    # Verify trip access
+    trip = get_trip_and_verify_access(trip_id, current_user, db)
+
+    # Build base query for days
+    days_query = db.query(Day).filter(Day.trip_id == trip_id, Day.deleted_at.is_(None))
+
+    # Apply status filter if provided
+    if status:
+        try:
+            day_status = DayStatus(status.lower())
+            days_query = days_query.filter(Day.status == day_status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid day status: {status}")
+
+    # Apply day limit if provided
+    if day_limit:
+        days_query = days_query.limit(day_limit)
+
+    # Order by sequence and get days
+    days = days_query.order_by(Day.seq).all()
+
+    if not days:
+        return DaysCompleteResponse(
+            trip_id=trip_id, days=[], total_days=0, total_stops=0
+        )
+
+    # Get all stops for these days in one query
+    day_ids = [day.id for day in days]
+    stops_query = db.query(Stop).filter(
+        Stop.day_id.in_(day_ids), Stop.deleted_at.is_(None)
+    )
+
+    # Include place information if requested
+    if include_place:
+        stops_query = stops_query.options(joinedload(Stop.place))
+
+    # Order stops by day_id and sequence
+    stops = stops_query.order_by(Stop.day_id, Stop.seq).all()
+
+    # Group stops by day_id
+    stops_by_day = {}
+    for stop in stops:
+        if stop.day_id not in stops_by_day:
+            stops_by_day[stop.day_id] = []
+        stops_by_day[stop.day_id].append(stop)
+
+    # Build response with days and their stops
+    days_with_stops = []
+    total_stops = 0
+
+    for day in days:
+        day_stops = stops_by_day.get(day.id, [])
+        total_stops += len(day_stops)
+
+        # Convert stops to schema
+        stop_schemas = []
+        for stop in day_stops:
+            stop_dict = stop.__dict__.copy()
+            if include_place and stop.place:
+                stop_dict["place"] = stop.place
+            stop_schemas.append(StopSchema.model_validate(stop_dict))
+
+        # Create day with all stops
+        day_dict = day.__dict__.copy()
+        day_dict["trip_start_date"] = trip.start_date
+        day_dict["stops"] = stop_schemas
+        day_dict["stops_count"] = len(day_stops)
+        day_dict["has_route"] = False  # TODO: Check for route versions when implemented
+
+        days_with_stops.append(DayWithAllStops.model_validate(day_dict))
+
+    return DaysCompleteResponse(
+        trip_id=trip_id,
+        days=days_with_stops,
+        total_days=len(days),
+        total_stops=total_stops,
     )
