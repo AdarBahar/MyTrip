@@ -34,7 +34,7 @@ from app.schemas.day import (
     DayWithStops,
 )
 from app.schemas.place import PlaceSchema
-from app.schemas.stop import StopSchema
+from app.schemas.stop import Stop as StopSchema
 from app.services.bulk_operations import BulkOperationService
 from app.services.filtering import FilterCondition, FilteringService, SortCondition
 

@@ -18,7 +18,7 @@ from app.models.user import User
 from app.schemas.bulk import BulkDeleteRequest, BulkOperationResult, BulkUpdateRequest
 from app.schemas.day import DayWithAllStops
 from app.schemas.pagination import create_paginated_response, get_base_url
-from app.schemas.stop import StopSchema
+from app.schemas.stop import Stop as StopSchema
 from app.schemas.trip import Trip as TripSchema
 from app.schemas.trip import (
     TripCreate,
@@ -525,7 +525,7 @@ async def list_trips(
             if day_ids:
                 stops = (
                     db.query(Stop)
-                    .filter(Stop.day_id.in_(day_ids), Stop.deleted_at.is_(None))
+                    .filter(Stop.day_id.in_(day_ids))
                     .all()
                 )
 
@@ -987,7 +987,7 @@ async def get_trip_complete(
     stops = []
     if day_ids:
         stops_query = db.query(Stop).filter(
-            Stop.day_id.in_(day_ids), Stop.deleted_at.is_(None)
+            Stop.day_id.in_(day_ids)
         )
 
         # Include place information if requested

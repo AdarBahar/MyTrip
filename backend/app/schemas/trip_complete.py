@@ -6,7 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.day import DayWithAllStops
-from app.schemas.trip import TripSchema
+from app.schemas.trip import Trip
 
 
 class TripSummary(BaseModel):
@@ -28,7 +28,7 @@ class TripSummary(BaseModel):
 class TripCompleteResponse(BaseModel):
     """Complete trip response with all days and stops included"""
 
-    trip: TripSchema = Field(description="Complete trip information")
+    trip: Trip = Field(description="Complete trip information")
     days: list[DayWithAllStops] = Field(
         description="All days ordered by sequence with their stops"
     )
