@@ -37,6 +37,23 @@ class DayBase(BaseModel):
         None, description="Additional notes and metadata"
     )
 
+    @field_validator("notes", mode="before")
+    @classmethod
+    def validate_notes(cls, v) -> Optional[dict[str, Any]]:
+        """Validate and convert notes field to dictionary format"""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            # Convert string to dictionary with a default key
+            return {"note": v}
+        # For other types, try to convert to string first
+        try:
+            return {"note": str(v)}
+        except Exception:
+            return None
+
 
 class DayCreate(BaseModel):
     """Schema for creating a day"""
@@ -50,6 +67,23 @@ class DayCreate(BaseModel):
         None, description="Additional notes and metadata"
     )
 
+    @field_validator("notes", mode="before")
+    @classmethod
+    def validate_notes(cls, v) -> Optional[dict[str, Any]]:
+        """Validate and convert notes field to dictionary format"""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            # Convert string to dictionary with a default key
+            return {"note": v}
+        # For other types, try to convert to string first
+        try:
+            return {"note": str(v)}
+        except Exception:
+            return None
+
 
 class DayUpdate(BaseModel):
     """Schema for updating a day"""
@@ -60,6 +94,23 @@ class DayUpdate(BaseModel):
     notes: Optional[dict[str, Any]] = Field(
         None, description="Additional notes and metadata"
     )
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def validate_notes(cls, v) -> Optional[dict[str, Any]]:
+        """Validate and convert notes field to dictionary format"""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            # Convert string to dictionary with a default key
+            return {"note": v}
+        # For other types, try to convert to string first
+        try:
+            return {"note": str(v)}
+        except Exception:
+            return None
 
 
 class Day(DayBase, BaseResponseWithSoftDelete):
