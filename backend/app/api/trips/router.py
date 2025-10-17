@@ -554,6 +554,7 @@ async def list_trips(
 
             # Create trip short data
             trip_short = TripShort(
+                id=str(trip.id),
                 slug=str(trip.slug),
                 title=str(trip.title),
                 destination=str(trip.destination)

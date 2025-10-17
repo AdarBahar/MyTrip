@@ -20,6 +20,7 @@ class DaySummary(BaseModel):
 class TripShort(BaseModel):
     """Short trip format with basic info and day summaries"""
 
+    id: str = Field(description="Trip ID")
     slug: str = Field(description="Trip URL slug")
     title: str = Field(description="Trip title")
     destination: Optional[str] = Field(None, description="Trip destination")
@@ -43,6 +44,7 @@ class TripShort(BaseModel):
         json_schema_extra={
             "examples": [
                 {
+                    "id": "01K5RPT2HKFSMBAEDXKJ7K8E99",
                     "slug": "summer-road-trip-2024",
                     "title": "Summer Road Trip 2024",
                     "destination": "Europe",
@@ -77,6 +79,7 @@ class TripShortResponse(BaseModel):
                 {
                     "data": [
                         {
+                            "id": "01K5RPT2HKFSMBAEDXKJ7K8E99",
                             "slug": "summer-road-trip-2024",
                             "title": "Summer Road Trip 2024",
                             "destination": "Europe",
