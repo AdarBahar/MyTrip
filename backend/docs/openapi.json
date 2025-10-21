@@ -2051,16 +2051,32 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "accommodation", "ACCOMMODATION",
+                    "food", "FOOD",
+                    "attraction", "ATTRACTION",
+                    "activity", "ACTIVITY",
+                    "shopping", "SHOPPING",
+                    "gas", "GAS",
+                    "transport", "TRANSPORT",
+                    "services", "SERVICES",
+                    "nature", "NATURE",
+                    "culture", "CULTURE",
+                    "nightlife", "NIGHTLIFE",
+                    "other", "OTHER"
+                  ]
                 },
                 {
                   "type": "null"
                 }
               ],
-              "description": "Filter by stop type (case-insensitive)",
-              "title": "Stop Type"
+              "description": "Filter by stop type (case-insensitive). Valid values: accommodation, food, attraction, activity, shopping, gas, transport, services, nature, culture, nightlife, other",
+              "title": "Stop Type",
+              "examples": ["food", "accommodation", "attraction", "FOOD", "ACCOMMODATION"]
             },
-            "description": "Filter by stop type (case-insensitive)"
+            "description": "Filter by stop type (case-insensitive). Valid values: accommodation, food, attraction, activity, shopping, gas, transport, services, nature, culture, nightlife, other",
+            "examples": ["food", "accommodation", "attraction"]
           },
           {
             "name": "filter_string",
@@ -2076,9 +2092,11 @@
                 }
               ],
               "description": "Advanced filters: field:operator:value,field2:op2:val2",
-              "title": "Filter String"
+              "title": "Filter String",
+              "examples": ["stop_type:eq:food,duration_min:gte:30", "seq:gte:2,notes:contains:restaurant"]
             },
-            "description": "Advanced filters: field:operator:value,field2:op2:val2"
+            "description": "Advanced filters: field:operator:value,field2:op2:val2",
+            "examples": ["stop_type:eq:food,duration_min:gte:30", "seq:gte:2,notes:contains:restaurant"]
           },
           {
             "name": "sort_string",
@@ -2094,9 +2112,11 @@
                 }
               ],
               "description": "Sort: field:direction,field2:direction2",
-              "title": "Sort String"
+              "title": "Sort String",
+              "examples": ["seq:asc,duration_min:desc", "created_at:desc"]
             },
-            "description": "Sort: field:direction,field2:direction2"
+            "description": "Sort: field:direction,field2:direction2",
+            "examples": ["seq:asc,duration_min:desc", "created_at:desc"]
           },
           {
             "name": "duration_min",
@@ -2111,10 +2131,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by minimum duration",
-              "title": "Duration Min"
+              "description": "Filter by minimum duration (in minutes)",
+              "title": "Duration Min",
+              "examples": [30, 60, 120]
             },
-            "description": "Filter by minimum duration"
+            "description": "Filter by minimum duration (in minutes)",
+            "examples": [30, 60, 120]
           },
           {
             "name": "duration_max",
@@ -2129,10 +2151,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by maximum duration",
-              "title": "Duration Max"
+              "description": "Filter by maximum duration (in minutes)",
+              "title": "Duration Max",
+              "examples": [120, 240, 480]
             },
-            "description": "Filter by maximum duration"
+            "description": "Filter by maximum duration (in minutes)",
+            "examples": [120, 240, 480]
           },
           {
             "name": "search",
@@ -2148,9 +2172,11 @@
                 }
               ],
               "description": "Search in stop notes and place names",
-              "title": "Search"
+              "title": "Search",
+              "examples": ["restaurant", "museum", "hotel"]
             },
-            "description": "Search in stop notes and place names"
+            "description": "Search in stop notes and place names",
+            "examples": ["restaurant", "museum", "hotel"]
           },
           {
             "name": "authorization",

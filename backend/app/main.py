@@ -20,9 +20,9 @@ try:
 except ImportError:
     pass  # Test detection utility not available
 
-from app.api.auth.jwt_router import router as jwt_auth_router
-
 # Import routers
+from app.api.ai.router import router as ai_router
+from app.api.auth.jwt_router import router as jwt_auth_router
 from app.api.auth.router import router as auth_router
 from app.api.days.router import router as days_router
 from app.api.enums.router import router as enums_router
@@ -693,6 +693,7 @@ async def root():
 
 
 # Include routers
+app.include_router(ai_router, prefix="/ai", tags=["ai"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(jwt_auth_router, prefix="/auth", tags=["jwt-auth"])
 app.include_router(trips_router, prefix="/trips", tags=["trips"])

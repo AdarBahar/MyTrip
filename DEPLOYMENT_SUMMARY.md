@@ -75,7 +75,7 @@ cp deploy-config.local.env.example deploy-config.local.env
 
 ### Automated Tests (8 scenarios)
 1. **Health Check** - Basic server connectivity
-2. **Authentication** - Login functionality  
+2. **Authentication** - Login functionality
 3. **Basic Endpoint** - Trips endpoint accessibility
 4. **Default Sorting** - Newest first behavior (your main requirement)
 5. **Explicit Sorting** - All sorting parameters work
@@ -151,7 +151,7 @@ GET /trips?sort_by=updated_at:desc    # By last update
 
 ### Deployment Success
 - ✅ All 8 automated tests pass
-- ✅ Service starts successfully  
+- ✅ Service starts successfully
 - ✅ API responds within 5 seconds
 - ✅ No increase in error rates
 
@@ -204,7 +204,7 @@ GET /trips?sort_by=updated_at:desc    # By last update
 
 Your trips sorting feature is ready for production deployment with:
 - ✅ Comprehensive testing
-- ✅ Automatic rollback capability  
+- ✅ Automatic rollback capability
 - ✅ Safety checks and confirmations
 - ✅ Detailed logging and monitoring
 - ✅ Complete documentation

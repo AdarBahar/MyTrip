@@ -77,7 +77,7 @@ The response format remains unchanged. The sorting only affects the order of ite
     },
     {
       "id": "01K4AHPK4S1KVTYDB5ASTGTM8L",
-      "title": "Earlier Trip", 
+      "title": "Earlier Trip",
       "created_at": "2024-01-15T10:30:00Z",
       ...
     }
