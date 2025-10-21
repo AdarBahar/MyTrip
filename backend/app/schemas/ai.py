@@ -44,6 +44,4 @@ class AIError(BaseModel):
 
     error_code: str = Field(..., description="Error code identifier")
     message: str = Field(..., description="Human-readable error message")
-    details: dict[str, Any] | None = Field(
-        None, description="Additional error details"
-    )
+    details: dict[str, Any] | None = Field(None, description="Additional error details")

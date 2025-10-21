@@ -29,6 +29,11 @@ from app.schemas.route import (
     DayRouteBreakdownRequest,
     DayRouteBreakdownResponse,
 )
+from app.schemas.route_optimization import (
+    RouteOptimizationRequest,
+    RouteOptimizationResponse,
+    RouteOptimizationErrorResponse,
+)
 from app.services.routing import (
     get_routing_provider,
     RoutePoint,
@@ -44,6 +49,9 @@ from app.core.auth import get_current_user
 
 # Import best insertion router
 from app.api.v1.routing.best_insertion import router as best_insertion_router
+
+# Import route optimization service
+from app.services.routing.route_optimization_service import RouteOptimizationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -766,3 +774,103 @@ async def compute_day_route_breakdown_endpoint(
             status_code=500,
             detail=f"Failed to compute route breakdown: {str(e)}"
         )
+
+
+@router.post(
+    "/optimize",
+    response_model=RouteOptimizationResponse,
+    summary="Optimize route with fixed start/end and optional fixed stops",
+    description="""
+    **Advanced Route Optimization**
+
+    Optimize a route with fixed start/end points and optional fixed intermediate stops.
+    Uses TSP algorithms (nearest neighbor + 2-opt) for efficient route ordering.
+
+    **Features:**
+    - ✅ Fixed start and end points (bookends)
+    - ✅ Optional fixed intermediate stops with sequence numbers
+    - ✅ Flexible stop reordering for optimization
+    - ✅ Multiple optimization objectives (time/distance)
+    - ✅ Vehicle profile support (car/bike/foot)
+    - ✅ Avoidance options (tolls/ferries/highways)
+    - ✅ Real road routing with geometry
+    - ✅ Comprehensive error handling and validation
+
+    **Request Body:**
+    ```json
+    {
+      "prompt": "Optional instructions for optimization",
+      "meta": {
+        "version": "1.0",
+        "objective": "time",
+        "vehicle_profile": "car",
+        "units": "metric",
+        "avoid": ["tolls", "highways"]
+      },
+      "data": {
+        "locations": [
+          {
+            "id": "start-1",
+            "type": "START",
+            "name": "Origin",
+            "lat": 32.0853,
+            "lng": 34.7818,
+            "fixed_seq": true,
+            "seq": 1
+          },
+          {
+            "id": "stop-1",
+            "type": "STOP",
+            "name": "Flexible Stop",
+            "lat": 32.0944,
+            "lng": 34.7806,
+            "fixed_seq": false
+          },
+          {
+            "id": "end-1",
+            "type": "END",
+            "name": "Destination",
+            "lat": 32.0668,
+            "lng": 34.7647,
+            "fixed_seq": true
+          }
+        ]
+      }
+    }
+    ```
+
+    **Authentication Required:** Bearer token
+    """,
+    responses={
+        400: {"model": RouteOptimizationErrorResponse, "description": "Invalid request data"},
+        401: {"description": "Authentication required"},
+        422: {"model": RouteOptimizationErrorResponse, "description": "Unroutable locations"},
+        500: {"model": RouteOptimizationErrorResponse, "description": "Internal server error"},
+    },
+)
+async def optimize_route(
+    request: RouteOptimizationRequest,
+    current_user = Depends(get_current_user),
+):
+    """
+    Optimize route order with fixed start/end and optional fixed intermediate stops.
+
+    This endpoint provides advanced route optimization using TSP algorithms:
+    - Keeps START and END fixed as bookends
+    - Preserves fixed_seq stops at their specified positions
+    - Optimizes order of flexible stops for minimum time/distance
+    - Returns complete route with geometry, metrics, and diagnostics
+    """
+
+    logger.info(f"Route optimization request from user {getattr(current_user, 'id', 'unknown')}")
+
+    # Initialize optimization service
+    optimization_service = RouteOptimizationService()
+
+    # Perform optimization
+    result = await optimization_service.optimize_route(request)
+
+    logger.info(f"Route optimization completed: {len(result.ordered)} locations, "
+               f"{result.summary.total_distance_km:.2f}km, {result.summary.total_duration_min:.1f}min")
+
+    return result
