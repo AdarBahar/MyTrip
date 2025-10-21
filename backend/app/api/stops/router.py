@@ -24,10 +24,7 @@ from app.schemas.bulk import (
     BulkUpdateRequest,
 )
 from app.schemas.route import RouteCommitRequest, RouteComputeRequest
-from app.schemas.sequence import (
-    SequenceOperationRequest,
-    SequenceOperationResult,
-)
+from app.schemas.sequence import SequenceOperationRequest, SequenceOperationResult
 from app.schemas.stop import Stop as StopSchema
 from app.schemas.stop import (
     StopBulkReorder,

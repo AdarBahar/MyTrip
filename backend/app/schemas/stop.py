@@ -6,10 +6,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
-from app.core.datetime_utils import (
-    time_serializer,
-    time_validator,
-)
+from app.core.datetime_utils import time_serializer, time_validator
 from app.models.stop import StopKind, StopType
 from app.schemas.base import BaseResponseSchema, ISO8601Time
 

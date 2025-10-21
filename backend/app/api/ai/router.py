@@ -148,12 +148,12 @@ Please analyze the route data and provide an optimized order following the instr
             metadata=metadata,
         )
 
-    except ImportError:
+    except ImportError as e:
         logger.error("OpenAI package not installed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI service dependencies not available. Please contact support.",
-        )
+        ) from e
 
     except Exception as e:
         # Handle OpenAI API errors
@@ -163,26 +163,26 @@ Please analyze the route data and provide an optimized order following the instr
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="AI service authentication failed. Please contact support.",
-                )
+                ) from e
             elif e.response.status_code == 429:
                 logger.warning("OpenAI API rate limit exceeded")
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail="AI service temporarily unavailable due to high demand. Please try again in a few moments.",
-                )
+                ) from e
             elif e.response.status_code >= 500:
                 logger.error(f"OpenAI API server error: {e}")
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="AI service temporarily unavailable. Please try again later.",
-                )
+                ) from e
 
         # Handle other errors
         logger.error(f"Unexpected error in AI route optimization: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while processing your request. Please try again.",
-        )
+        ) from e
 
 
 @router.get("/health")
