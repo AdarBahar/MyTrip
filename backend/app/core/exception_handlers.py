@@ -81,7 +81,27 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Handle FastAPI HTTP exceptions"""
     request_id = generate_request_id()
-    
+
+    # Check if detail is already a structured response (dict)
+    # This happens when services raise HTTPException with structured error responses
+    # like RouteOptimizationErrorResponse.dict()
+    if isinstance(exc.detail, dict):
+        # Add request metadata to structured response
+        if "timestamp" not in exc.detail:
+            exc.detail["timestamp"] = DateTimeStandards.format_datetime(DateTimeStandards.now_utc())
+        if "request_id" not in exc.detail:
+            exc.detail["request_id"] = request_id
+        if "path" not in exc.detail:
+            exc.detail["path"] = str(request.url.path)
+
+        logger.warning(f"HTTP exception [{request_id}]: {exc.status_code} - structured response")
+
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.detail
+        )
+
+    # Handle string-based detail messages with standard APIError wrapping
     # Map HTTP status codes to error types
     if exc.status_code == 401:
         api_error = create_authentication_error(
@@ -118,15 +138,15 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             message=exc.detail or f"HTTP {exc.status_code} error"
         )
         api_error.error_code = ErrorCode.INTERNAL_ERROR
-    
+
     error_response = APIErrorResponse(
         error=api_error,
         request_id=request_id,
         path=str(request.url.path)
     )
-    
+
     logger.warning(f"HTTP exception [{request_id}]: {exc.status_code} - {exc.detail}")
-    
+
     return JSONResponse(
         status_code=exc.status_code,
         content=error_response.dict()
