@@ -230,26 +230,27 @@ class TSPOptimizer:
         location_to_index: Dict[int, int]
     ) -> List[LocationRequest]:
         """Construct initial tour using nearest neighbor"""
-        
+
         if not stops:
             return []
-        
+
         tour = [stops[0]]
-        remaining = set(stops[1:])
-        
+        # Use list instead of set since LocationRequest objects are not hashable
+        remaining = list(stops[1:])
+
         while remaining:
             current = tour[-1]
             current_idx = location_to_index[id(current)]
-            
+
             # Find nearest unvisited stop
             nearest = min(
                 remaining,
                 key=lambda stop: matrix.get((current_idx, location_to_index[id(stop)]), float('inf'))
             )
-            
+
             tour.append(nearest)
             remaining.remove(nearest)
-        
+
         return tour
     
     def _two_opt_improvement(
