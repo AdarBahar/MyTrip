@@ -90,7 +90,7 @@ async def compute_route(
     stops = (
         db.query(Stop)
         .join(Place)
-        .filter(Stop.day_id == day_id)
+        .filter(Stop.day_id == day_id, Stop.deleted_at.is_(None))
         .order_by(Stop.seq)
         .all()
     )
@@ -537,7 +537,7 @@ async def get_day_active_summary(day_id: str, db: Session = Depends(get_db)):
     # Start/End from stops if available
     stops = (
         db.query(Stop).options(joinedload(Stop.place))
-        .filter(Stop.day_id == day_id, Stop.kind.in_([StopKind.START, StopKind.END]))
+        .filter(Stop.day_id == day_id, Stop.kind.in_([StopKind.START, StopKind.END]), Stop.deleted_at.is_(None))
         .order_by(Stop.seq)
         .all()
     )
@@ -582,6 +582,7 @@ async def get_day_active_summary(day_id: str, db: Session = Depends(get_db)):
 
     return DayRouteActiveSummary(
         day_id=day_id,
+        status=day.status.value,
         start=start,
         end=end,
         route_total_km=total_km,
@@ -602,11 +603,12 @@ async def get_bulk_active_summaries(body: BulkDayRouteSummaryRequest, db: Sessio
     # Fetch days to validate
     days = db.query(Day).filter(Day.id.in_(day_ids)).all()
     valid_ids = {d.id for d in days}
+    days_by_id = {d.id: d for d in days}
 
     # Stops for START/END for all days
     stops = (
         db.query(Stop).options(joinedload(Stop.place))
-        .filter(Stop.day_id.in_(list(valid_ids)), Stop.kind.in_([StopKind.START, StopKind.END]))
+        .filter(Stop.day_id.in_(list(valid_ids)), Stop.kind.in_([StopKind.START, StopKind.END]), Stop.deleted_at.is_(None))
         .order_by(Stop.day_id, Stop.seq)
         .all()
     )
@@ -660,8 +662,11 @@ async def get_bulk_active_summaries(body: BulkDayRouteSummaryRequest, db: Sessio
             if rv.total_min is not None:
                 try: total_min = float(rv.total_min)
                 except Exception: pass
+        day_obj = days_by_id.get(did)
+        status = day_obj.status.value if day_obj else "unknown"
         summaries.append(DayRouteActiveSummary(
             day_id=did,
+            status=status,
             start=start_map.get(did),
             end=end_map.get(did),
             route_total_km=total_km,

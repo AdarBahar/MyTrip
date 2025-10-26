@@ -14,6 +14,7 @@ from app.models.base import BaseModel, SoftDeleteMixin
 class DayStatus(str, enum.Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
+    DELETED = "deleted"
 
 
 class Day(BaseModel, SoftDeleteMixin):

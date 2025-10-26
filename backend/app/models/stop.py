@@ -8,7 +8,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 import enum
 
-from app.models.base import BaseModel
+from app.models.base import BaseModel, SoftDeleteMixin
 
 
 class StopKind(str, enum.Enum):
@@ -44,7 +44,7 @@ class StopType(str, enum.Enum):
     OTHER = "OTHER"                # 📌 Miscellaneous stops not fitting other categories
 
 
-class Stop(BaseModel):
+class Stop(BaseModel, SoftDeleteMixin):
     """Stop model"""
 
     __tablename__ = "stops"

@@ -525,7 +525,7 @@ async def list_trips(
             if day_ids:
                 stops = (
                     db.query(Stop)
-                    .filter(Stop.day_id.in_(day_ids))
+                    .filter(Stop.day_id.in_(day_ids), Stop.deleted_at.is_(None))
                     .all()
                 )
 
@@ -988,7 +988,7 @@ async def get_trip_complete(
     stops = []
     if day_ids:
         stops_query = db.query(Stop).filter(
-            Stop.day_id.in_(day_ids)
+            Stop.day_id.in_(day_ids), Stop.deleted_at.is_(None)
         )
 
         # Include place information if requested

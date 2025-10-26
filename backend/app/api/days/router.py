@@ -478,11 +478,21 @@ async def delete_day(
     if not day:
         raise HTTPException(status_code=404, detail="Day not found")
 
-    # Soft delete the day (this will cascade to stops and routes via application logic)
+    # Soft delete the day and change status to DELETED
     day.soft_delete()
+    day.status = DayStatus.DELETED
 
-    # TODO: Also soft delete associated stops and route versions
-    # This should be handled by the soft delete cascade logic
+    # Cascade soft delete to associated stops
+    stops = db.query(Stop).filter(Stop.day_id == day_id, Stop.deleted_at.is_(None)).all()
+    for stop in stops:
+        stop.soft_delete()
+
+    # Cascade soft delete to associated route versions
+    route_versions = db.query(RouteVersion).filter(RouteVersion.day_id == day_id).all()
+    for rv in route_versions:
+        # RouteVersion doesn't have soft delete, so we'll delete them permanently for now
+        # TODO: Add soft delete to RouteVersion model if needed
+        db.delete(rv)
 
     db.commit()
 

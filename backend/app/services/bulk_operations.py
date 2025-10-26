@@ -89,8 +89,11 @@ class BulkOperationService:
                         ))
                         continue
                 
-                # Perform deletion
-                self.db.delete(resource)
+                # Perform deletion (soft delete if supported, hard delete otherwise)
+                if hasattr(resource, 'soft_delete'):
+                    resource.soft_delete()
+                else:
+                    self.db.delete(resource)
                 
                 # Post-delete hook
                 if post_delete_hook:

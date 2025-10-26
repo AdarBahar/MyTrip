@@ -113,6 +113,7 @@ class RouteVersionUpdate(BaseModel):
 
 class DayRouteActiveSummary(BaseModel):
     day_id: str
+    status: str
     start: Optional[Dict[str, Any]] = None
     end: Optional[Dict[str, Any]] = None
     route_total_km: Optional[float] = None

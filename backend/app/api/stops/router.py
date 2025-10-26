@@ -12,7 +12,7 @@ from app.api.routing.router import commit_route as routing_commit_route
 from app.api.routing.router import compute_route as routing_compute_route
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.day import Day
+from app.models.day import Day, DayStatus
 from app.models.place import Place as PlaceModel
 from app.models.stop import Stop, StopKind, StopType
 from app.models.trip import Trip
@@ -399,7 +399,7 @@ async def list_stops(
         # Eager-load place and avoid N+1
         query = query.options(joinedload(Stop.place))
 
-    query = query.filter(Stop.day_id == day_id, Stop.trip_id == trip_id)
+    query = query.filter(Stop.day_id == day_id, Stop.trip_id == trip_id, Stop.deleted_at.is_(None))
 
     # Initialize filtering service
     filtering_service = FilteringService()
@@ -790,8 +790,8 @@ async def delete_stop(
     if not stop:
         raise HTTPException(status_code=404, detail="Stop not found")
 
-    # Delete stop
-    db.delete(stop)
+    # Soft delete stop
+    stop.soft_delete()
     db.commit()
 
     # Server-side compute+commit after stop delete
@@ -835,8 +835,8 @@ async def reorder_stops(
     # Verify access
     get_day_and_verify_access(day_id, trip_id, current_user, db)
 
-    # Get all stops for the day
-    stops = db.query(Stop).filter(Stop.day_id == day_id, Stop.trip_id == trip_id).all()
+    # Get all stops for the day (only non-deleted)
+    stops = db.query(Stop).filter(Stop.day_id == day_id, Stop.trip_id == trip_id, Stop.deleted_at.is_(None)).all()
 
     stop_dict = {stop.id: stop for stop in stops}
 
@@ -907,23 +907,30 @@ async def get_trip_stops_summary(
     # Verify access
     get_trip_and_verify_access(trip_id, current_user, db)
 
-    # Get stops summary by type
+    # Get stops summary by type (only non-deleted stops)
     summary = (
         db.query(Stop.stop_type, func.count(Stop.id).label("count"))
-        .filter(Stop.trip_id == trip_id)
+        .filter(Stop.trip_id == trip_id, Stop.deleted_at.is_(None))
         .group_by(Stop.stop_type)
         .all()
     )
 
-    # Get total stops count
-    total_stops = db.query(func.count(Stop.id)).filter(Stop.trip_id == trip_id).scalar()
+    # Get total stops count (only non-deleted stops)
+    total_stops = db.query(func.count(Stop.id)).filter(Stop.trip_id == trip_id, Stop.deleted_at.is_(None)).scalar()
+
+    # Get active days count (only non-deleted days)
+    active_days = db.query(func.count(Day.id)).filter(
+        Day.trip_id == trip_id,
+        Day.deleted_at.is_(None),
+        Day.status != DayStatus.DELETED
+    ).scalar()
 
     # Format response
     summary_dict = {stop_type.value.lower(): 0 for stop_type in StopType}
     for stop_type, count in summary:
         summary_dict[stop_type.value.lower()] = count
 
-    return {"trip_id": trip_id, "total_stops": total_stops, "by_type": summary_dict}
+    return {"trip_id": trip_id, "total_stops": total_stops, "by_type": summary_dict, "days": active_days}
 
 
 # Bulk Operations Endpoints
