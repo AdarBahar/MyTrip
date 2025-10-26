@@ -124,7 +124,7 @@ class Day(DayBase, BaseResponseWithSoftDelete):
                     "id": "01K4AHPK4S1KVTYDB5ASTGTM8K",
                     "trip_id": "01K367ED2RPNS2H19J8PQDNXFB",
                     "seq": 1,
-                    "status": "active",
+                    "status": "ACTIVE",
                     "rest_day": False,
                     "notes": {"weather": "sunny", "activities": ["hiking"]},
                     "trip_start_date": "2024-07-15",

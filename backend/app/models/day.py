@@ -1,20 +1,29 @@
 """
 Day model
 """
+import enum
+
 from sqlalchemy import (
-    Column, String, Integer, Date, Boolean, Enum, ForeignKey,
-    UniqueConstraint, CheckConstraint, JSON
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
-import enum
 
 from app.models.base import BaseModel, SoftDeleteMixin
 
 
 class DayStatus(str, enum.Enum):
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-    DELETED = "deleted"
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    DELETED = "DELETED"
 
 
 class Day(BaseModel, SoftDeleteMixin):

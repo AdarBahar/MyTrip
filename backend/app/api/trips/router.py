@@ -971,7 +971,7 @@ async def get_trip_complete(
     # Apply status filter if provided
     if status:
         try:
-            day_status = DayStatus(status.lower())
+            day_status = DayStatus(status.upper())
             days_query = days_query.filter(Day.status == day_status)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid day status: {status}")

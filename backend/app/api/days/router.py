@@ -16,11 +16,7 @@ from app.models.route import RouteVersion
 from app.models.stop import Stop, StopKind
 from app.models.trip import Trip
 from app.models.user import User
-from app.schemas.bulk import (
-    BulkDeleteRequest,
-    BulkOperationResult,
-    BulkUpdateRequest,
-)
+from app.schemas.bulk import BulkDeleteRequest, BulkOperationResult, BulkUpdateRequest
 from app.schemas.day import Day as DaySchema
 from app.schemas.day import (
     DayCreate,
@@ -483,7 +479,9 @@ async def delete_day(
     day.status = DayStatus.DELETED
 
     # Cascade soft delete to associated stops
-    stops = db.query(Stop).filter(Stop.day_id == day_id, Stop.deleted_at.is_(None)).all()
+    stops = (
+        db.query(Stop).filter(Stop.day_id == day_id, Stop.deleted_at.is_(None)).all()
+    )
     for stop in stops:
         stop.soft_delete()
 
@@ -724,7 +722,7 @@ async def list_days_complete(
     # Apply status filter if provided
     if status:
         try:
-            day_status = DayStatus(status.lower())
+            day_status = DayStatus(status.upper())
             days_query = days_query.filter(Day.status == day_status)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid day status: {status}")
