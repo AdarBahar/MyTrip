@@ -55,6 +55,19 @@ class LogoutResponse(BaseModel):
     message: str = Field(default="Successfully logged out", description="Logout success message")
 
 
+class AppLoginRequest(BaseModel):
+    """Simple app login request schema"""
+    email: EmailStr
+    password: str = Field(..., min_length=1, description="User password")
+
+
+class AppLoginResponse(BaseModel):
+    """Simple app login response schema"""
+    authenticated: bool = Field(..., description="Whether authentication was successful")
+    user_id: Optional[str] = Field(None, description="User ID if authenticated")
+    message: str = Field(..., description="Authentication result message")
+
+
 class TokenValidationResponse(BaseModel):
     """Token validation response schema"""
     valid: bool = Field(..., description="Whether the token is valid")

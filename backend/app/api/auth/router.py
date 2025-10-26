@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.models.user import User, UserStatus
-from app.schemas.auth import LoginRequest, LoginResponse, UserProfile
+from app.schemas.auth import LoginRequest, LoginResponse, UserProfile, AppLoginRequest, AppLoginResponse
 
 router = APIRouter()
 security = HTTPBearer()
@@ -131,6 +131,111 @@ async def get_current_user_profile(
         display_name=current_user.display_name,
         status=current_user.status.value
     )
+
+
+@router.post("/app-login", response_model=AppLoginResponse)
+async def app_login(
+    login_data: AppLoginRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    **Simple App Login**
+
+    Simple authentication endpoint for apps that returns authenticated/not authenticated
+    without token management. Validates email and password against the user database.
+
+    **Features:**
+    - No JWT token generation or management
+    - Simple boolean response (authenticated: true/false)
+    - Returns user ID on successful authentication
+    - Validates against hashed passwords in database
+    - Checks user account status (must be ACTIVE)
+
+    **Use Cases:**
+    - Mobile apps with their own session management
+    - Simple authentication checks
+    - Legacy systems that don't use JWT tokens
+    - Quick authentication validation
+
+    **Request Body:**
+    ```json
+    {
+      "email": "user@example.com",
+      "password": "user_password"
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authenticated": true,
+      "user_id": "01K5P68329YFSCTV777EB4GM9P",
+      "message": "Authentication successful"
+    }
+    ```
+
+    **Error Response:**
+    ```json
+    {
+      "authenticated": false,
+      "user_id": null,
+      "message": "Invalid email or password"
+    }
+    ```
+    """
+    try:
+        email = login_data.email.lower()
+
+        # Find user by email
+        user = db.query(User).filter(User.email == email).first()
+
+        if not user:
+            return AppLoginResponse(
+                authenticated=False,
+                user_id=None,
+                message="Invalid email or password"
+            )
+
+        # Check if user is active
+        if user.status != UserStatus.ACTIVE:
+            return AppLoginResponse(
+                authenticated=False,
+                user_id=None,
+                message="User account is disabled"
+            )
+
+        # Check if user has a password hash
+        if not hasattr(user, 'password_hash') or not user.password_hash:
+            return AppLoginResponse(
+                authenticated=False,
+                user_id=None,
+                message="User account not properly configured"
+            )
+
+        # Verify password
+        from app.core.jwt import verify_password
+        if not verify_password(login_data.password, user.password_hash):
+            return AppLoginResponse(
+                authenticated=False,
+                user_id=None,
+                message="Invalid email or password"
+            )
+
+        # Authentication successful
+        return AppLoginResponse(
+            authenticated=True,
+            user_id=user.id,
+            message="Authentication successful"
+        )
+
+    except Exception as e:
+        # Log error for debugging but don't expose details
+        print(f"App login error for email {login_data.email}: {e}")
+        return AppLoginResponse(
+            authenticated=False,
+            user_id=None,
+            message="Authentication failed"
+        )
 
 
 @router.post("/logout")

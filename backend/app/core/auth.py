@@ -1,6 +1,7 @@
 """
 Authentication dependencies and utilities
 """
+from typing import Optional
 from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 
@@ -75,7 +76,7 @@ async def get_current_user(
 async def get_current_user_optional(
     authorization: str = Header(None),
     db: Session = Depends(get_db)
-) -> User | None:
+) -> Optional[User]:
     """Get current user from token, but don't raise error if not authenticated"""
     from app.core.jwt import (
         get_user_id_from_token,
