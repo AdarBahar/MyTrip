@@ -298,43 +298,138 @@ paths:
           content:
             application/json:
               schema: {}
+  /ai/route-optimize:
+    post:
+      tags:
+      - ai
+      summary: AI-powered route optimization
+      description: "**AI Route Optimization**\n\n    Use OpenAI's GPT models to analyze\
+        \ and optimize route data with natural language instructions.\n\n    **Features:**\n\
+        \    - ✅ Natural language prompts for route optimization\n    - ✅ Flexible\
+        \ data input (string or structured)\n    - ✅ Customizable response format\n\
+        \    - ✅ Support for fixed stops and constraints\n    - ✅ Comprehensive error\
+        \ handling\n\n    **Use Cases:**\n    - Optimize stop order based on custom\
+        \ criteria\n    - Analyze route efficiency and suggest improvements\n    -\
+        \ Handle complex routing constraints with natural language\n    - Generate\
+        \ human-readable route summaries\n\n    **Example Request:**\n    ```json\n\
+        \    {\n      \"prompt\": \"Create the right order of the route, assuming\
+        \ that start and end are book-endings, and stops are ordered in the optimized\
+        \ route. If a stop is marked as fixed, order for that specific stop should\
+        \ not change.\",\n      \"data\": \"Type | Location | Address\\nStart | 32.1878296,\
+        \ 34.9354013 | מיכל, כפר סבא, ישראל\\nEnd | 32.067444, 34.7936703 | יגאל אלון,\
+        \ 6789731 תל־אביב–יפו, ישראל\\nStop | 32.1962854, 34.8766859 | רננים, רעננה,\
+        \ ישראל\\nStop | 32.1739447, 34.8081801 | הרצליה פיתוח, הרצליה, ישראל\\nStop\
+        \ | 32.1879896, 34.8934844 | כפר סבא הירוקה, כפר סבא, ישראל\",\n      \"response_structure\"\
+        : \"Start: מיכל, כפר סבא (32.1878296, 34.9354013)\\nStop 1: כפר סבא הירוקה\
+        \ (32.1879896, 34.8934844)\\nStop 2: רננים, רעננה (32.1962854, 34.8766859)\\\
+        nStop 3: הרצליה פיתוח (32.1739447, 34.8081801)\\nEnd: יגאל אלון, תל אביב–יפו\
+        \ (32.067444, 34.7936703)\"\n    }\n    ```\n\n    **Authentication Required:**\
+        \ Bearer token"
+      operationId: optimize_route_with_ai_ai_route_optimize_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteOptimizeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteOptimizeResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIError'
+        '401':
+          description: Authentication required
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIError'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /ai/health:
+    get:
+      tags:
+      - ai
+      summary: Ai Health
+      description: Health check for AI endpoints
+      operationId: ai_health_ai_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - BearerAuth: []
   /auth/login:
     post:
       tags:
       - auth
-      summary: Fake Login
-      description: '**Login with Email Address**
+      summary: Login
+      description: '**Login with Email and Password**
 
 
-        This is a development authentication endpoint that creates or returns a user
-        for any valid email address.
+        Authenticate with email address and password against the production database.
 
 
         **How to use:**
 
-        1. Enter any valid email address
+        1. Enter your registered email address
 
-        2. Copy the `access_token` from the response
+        2. Enter your password (if no password field, any non-empty string for existing
+        users)
 
-        3. Click the "Authorize" button in Swagger UI
+        3. Copy the `access_token` from the response
 
-        4. Enter: `Bearer <your_access_token>`
+        4. Click the "Authorize" button in Swagger UI
 
-        5. Use protected endpoints with automatic authentication
+        5. Enter: `Bearer <your_access_token>`
+
+        6. Use protected endpoints with automatic authentication
 
 
         **Example:**
 
         - Email: `adar.bahar@gmail.com`
 
-        - Response: `{"access_token": "fake_token_ABC123", ...}`
+        - Password: `your_password` (or any string if password not implemented yet)
 
-        - Authorization: `Bearer fake_token_ABC123`
+        - Response: `{"access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...", ...}`
+
+        - Authorization: `Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...`
 
 
-        **Note:** This automatically creates a new user account if the email doesn''t
-        exist.'
-      operationId: fake_login_auth_login_post
+        **Note:** Only existing users in the database can login. No automatic user
+        creation.'
+      operationId: login_auth_login_post
       requestBody:
         content:
           application/json:
@@ -399,6 +494,47 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - BearerAuth: []
+  /auth/app-login:
+    post:
+      tags:
+      - auth
+      summary: App Login
+      description: "**Simple App Login**\n\nSimple authentication endpoint for apps\
+        \ that returns authenticated/not authenticated\nwithout token management.\
+        \ Validates email and password against the user database.\n\n**Features:**\n\
+        - No JWT token generation or management\n- Simple boolean response (authenticated:\
+        \ true/false)\n- Returns user ID on successful authentication\n- Validates\
+        \ against hashed passwords in database\n- Checks user account status (must\
+        \ be ACTIVE)\n\n**Use Cases:**\n- Mobile apps with their own session management\n\
+        - Simple authentication checks\n- Legacy systems that don't use JWT tokens\n\
+        - Quick authentication validation\n\n**Request Body:**\n```json\n{\n  \"email\"\
+        : \"user@example.com\",\n  \"password\": \"user_password\"\n}\n```\n\n**Response:**\n\
+        ```json\n{\n  \"authenticated\": true,\n  \"user_id\": \"01K5P68329YFSCTV777EB4GM9P\"\
+        ,\n  \"message\": \"Authentication successful\"\n}\n```\n\n**Error Response:**\n\
+        ```json\n{\n  \"authenticated\": false,\n  \"user_id\": null,\n  \"message\"\
+        : \"Invalid email or password\"\n}\n```"
+      operationId: app_login_auth_app_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppLoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppLoginResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
   /auth/logout:
     post:
       tags:
@@ -417,6 +553,121 @@ paths:
 
         For this development system, simply remove the token from your client storage.'
       operationId: logout_auth_logout_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - BearerAuth: []
+  /auth/jwt/login:
+    post:
+      tags:
+      - jwt-auth
+      summary: Jwt Login
+      description: Authenticate user with email/password and return JWT tokens
+      operationId: jwt_login_auth_jwt_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /auth/jwt/refresh:
+    post:
+      tags:
+      - jwt-auth
+      summary: Jwt Refresh Token
+      description: Refresh access token using refresh token
+      operationId: jwt_refresh_token_auth_jwt_refresh_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /auth/jwt/logout:
+    post:
+      tags:
+      - jwt-auth
+      summary: Jwt Logout
+      description: Logout user (client should discard tokens)
+      operationId: jwt_logout_auth_jwt_logout_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+      security:
+      - BearerAuth: []
+  /auth/jwt/validate:
+    get:
+      tags:
+      - jwt-auth
+      summary: Jwt Validate Token
+      description: Validate a JWT token and return user information
+      operationId: jwt_validate_token_auth_jwt_validate_get
+      parameters:
+      - name: token
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /auth/jwt/health:
+    get:
+      tags:
+      - jwt-auth
+      summary: Jwt Health
+      description: Health check for JWT authentication endpoints
+      operationId: jwt_health_auth_jwt_health_get
       responses:
         '200':
           description: Successful Response
@@ -581,18 +832,31 @@ paths:
           default: 20
           title: Size
         description: Number of trips per page
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Sort by field:direction (created_at:desc, updated_at:desc,
+            title:asc, start_date:desc)
+          default: created_at:desc
+          title: Sort By
+        description: Sort by field:direction (created_at:desc, updated_at:desc, title:asc,
+          start_date:desc)
       - name: format
         in: query
         required: false
         schema:
           anyOf:
           - type: string
-            pattern: ^(legacy|modern)$
+            pattern: ^(legacy|modern|short)$
           - type: 'null'
-          description: 'Response format: ''legacy'' or ''modern'''
+          description: 'Response format: ''legacy'', ''modern'', or ''short'''
           default: modern
           title: Format
-        description: 'Response format: ''legacy'' or ''modern'''
+        description: 'Response format: ''legacy'', ''modern'', or ''short'''
       - name: authorization
         in: header
         required: false
@@ -608,6 +872,7 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/PaginatedResponse_Trip_'
                 - $ref: '#/components/schemas/TripList'
+                - $ref: '#/components/schemas/TripShortResponse'
                 title: Response List Trips Trips  Get
               examples:
                 modern_format:
@@ -676,6 +941,12 @@ paths:
         schema:
           type: string
           title: Trip Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
       responses:
         '200':
           description: Successful Response
@@ -919,6 +1190,233 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkOperationResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /trips/{trip_id}/complete:
+    get:
+      tags:
+      - trips
+      summary: Get Trip Complete
+      description: '**Get Complete Trip Data**
+
+
+        Get comprehensive trip information including all days and stops in a single
+        request.
+
+
+        **Features:**
+
+        - ✅ **Complete trip data**: Trip details, all days, and all stops
+
+        - ✅ **Proper ordering**: Days by sequence (1, 2, 3...), stops by sequence
+        within each day
+
+        - ✅ **Summary statistics**: Total days, stops, duration, and breakdowns
+
+        - ✅ **Optional place details**: Include place information for each stop
+
+        - ✅ **Route information**: Include route data if available
+
+        - ✅ **Filtering**: Filter days by status
+
+        - ✅ **Performance optimized**: Efficient queries with eager loading
+
+
+        **Query Parameters:**
+
+        - `include_place`: Include place details with stops (default: false)
+
+        - `include_route_info`: Include route information (default: false)
+
+        - `status`: Filter days by status (active, completed, etc.)
+
+        - `day_limit`: Limit number of days returned (1-50)
+
+
+        **Response Structure:**
+
+        - Complete trip information with user details
+
+        - Days ordered by sequence (1, 2, 3...)
+
+        - Stops ordered by sequence within each day (START → VIA → END)
+
+        - Summary statistics and breakdowns
+
+
+        **Authentication Required:** You must be the trip owner.'
+      operationId: get_trip_complete_trips__trip_id__complete_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Trip Id
+      - name: include_place
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include place information with stops
+          default: false
+          title: Include Place
+        description: Include place information with stops
+      - name: include_route_info
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include route information
+          default: false
+          title: Include Route Info
+        description: Include route information
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filter days by status
+          title: Status
+        description: Filter days by status
+      - name: day_limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 50
+            minimum: 1
+          - type: 'null'
+          description: Limit number of days returned
+          title: Day Limit
+        description: Limit number of days returned
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TripCompleteResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /routing/optimization/best-insertion:
+    post:
+      tags:
+      - routing
+      - route-optimization
+      summary: Optimize Route With Best Insertion
+      description: "Insert a new stop at the optimal position using best insertion\
+        \ algorithm.\n\nThis endpoint provides O(n) route optimization for interactive\
+        \ UI,\ngiving instant feedback when users add stops to existing routes.\n\n\
+        Args:\n    request_data: Best insertion request data\n    current_user: Current\
+        \ authenticated user\n    \nReturns:\n    Optimized route with insertion metrics\n\
+        \    \nRaises:\n    HTTPException: If optimization fails"
+      operationId: optimize_route_with_best_insertion_routing_optimization_best_insertion_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Request Data
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                title: Response Optimize Route With Best Insertion Routing Optimization
+                  Best Insertion Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /routing/optimization/insertion-preview:
+    get:
+      tags:
+      - routing
+      - route-optimization
+      summary: Preview Best Insertion Positions
+      description: "Preview insertion costs for all possible positions.\n\nThis endpoint\
+        \ calculates the cost of inserting a new stop at each\npossible position in\
+        \ the route, useful for UI visualization.\n\nArgs:\n    current_route: JSON\
+        \ string of current route points\n    new_stop: JSON string of new stop data\n\
+        \    profile: Routing profile\n    optimize_for: \"time\" or \"distance\"\n\
+        \    current_user: Current authenticated user\n    \nReturns:\n    List of\
+        \ insertion costs for each position"
+      operationId: preview_best_insertion_positions_routing_optimization_insertion_preview_get
+      parameters:
+      - name: current_route
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Current Route
+      - name: new_stop
+        in: query
+        required: true
+        schema:
+          type: string
+          title: New Stop
+      - name: profile
+        in: query
+        required: false
+        schema:
+          type: string
+          default: car
+          title: Profile
+      - name: optimize_for
+        in: query
+        required: false
+        schema:
+          type: string
+          default: time
+          title: Optimize For
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
         '422':
           description: Validation Error
           content:
@@ -1230,12 +1728,26 @@ paths:
 
         The response also includes total distance and duration for the entire day.'
       operationId: compute_day_route_breakdown_endpoint_routing_days_route_breakdown_post
+      parameters:
+      - name: persist_route
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          title: Persist Route
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/DayRouteBreakdownRequest'
-        required: true
       responses:
         '200':
           description: Successful Response
@@ -1249,6 +1761,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
+  /routing/optimize:
+    post:
+      tags:
+      - routing
+      summary: Optimize route with fixed start/end and optional fixed stops
+      description: "**Advanced Route Optimization**\n\n    Optimize a route with fixed\
+        \ start/end points and optional fixed intermediate stops.\n    Uses TSP algorithms\
+        \ (nearest neighbor + 2-opt) for efficient route ordering.\n\n    **Features:**\n\
+        \    - ✅ Fixed start and end points (bookends)\n    - ✅ Optional fixed intermediate\
+        \ stops with sequence numbers\n    - ✅ Flexible stop reordering for optimization\n\
+        \    - ✅ Multiple optimization objectives (time/distance)\n    - ✅ Vehicle\
+        \ profile support (car/bike/foot)\n    - ✅ Avoidance options (tolls/ferries/highways)\n\
+        \    - ✅ Real road routing with geometry\n    - ✅ Comprehensive error handling\
+        \ and validation\n\n    **Request Body:**\n    ```json\n    {\n      \"prompt\"\
+        : \"Optional instructions for optimization\",\n      \"meta\": {\n       \
+        \ \"version\": \"1.0\",\n        \"objective\": \"time\",\n        \"vehicle_profile\"\
+        : \"car\",\n        \"units\": \"metric\",\n        \"avoid\": [\"tolls\"\
+        , \"highways\"]\n      },\n      \"data\": {\n        \"locations\": [\n \
+        \         {\n            \"id\": \"start-1\",\n            \"type\": \"START\"\
+        ,\n            \"name\": \"Origin\",\n            \"lat\": 32.0853,\n    \
+        \        \"lng\": 34.7818,\n            \"fixed_seq\": true,\n           \
+        \ \"seq\": 1\n          },\n          {\n            \"id\": \"stop-1\",\n\
+        \            \"type\": \"STOP\",\n            \"name\": \"Flexible Stop\"\
+        ,\n            \"lat\": 32.0944,\n            \"lng\": 34.7806,\n        \
+        \    \"fixed_seq\": false\n          },\n          {\n            \"id\":\
+        \ \"end-1\",\n            \"type\": \"END\",\n            \"name\": \"Destination\"\
+        ,\n            \"lat\": 32.0668,\n            \"lng\": 34.7647,\n        \
+        \    \"fixed_seq\": true\n          }\n        ]\n      }\n    }\n    ```\n\
+        \n    **Authentication Required:** Bearer token"
+      operationId: optimize_route_routing_optimize_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteOptimizationRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteOptimizationResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteOptimizationErrorResponse'
+        '401':
+          description: Authentication required
+        '422':
+          description: Unroutable locations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteOptimizationErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteOptimizationErrorResponse'
       security:
       - BearerAuth: []
   /trips/{trip_id}/days:
@@ -1727,6 +2311,125 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
       security:
       - BearerAuth: []
+  /trips/{trip_id}/days/complete:
+    get:
+      tags:
+      - days
+      summary: List Days Complete
+      description: '**Get Complete Days with All Stops**
+
+
+        Get all days for a trip with complete stops information in a single request.
+
+
+        **Features:**
+
+        - ✅ **Complete nested structure**: All days with all their stops
+
+        - ✅ **Proper ordering**: Days by sequence (1, 2, 3...), stops by sequence
+        within each day
+
+        - ✅ **Optional place details**: Include place information for each stop
+
+        - ✅ **Route information**: Include route data if available
+
+        - ✅ **Filtering**: Filter days by status
+
+        - ✅ **Performance optimized**: Single query with eager loading
+
+
+        **Query Parameters:**
+
+        - `include_place`: Include place details with stops (default: false)
+
+        - `include_route_info`: Include route information (default: false)
+
+        - `status`: Filter days by status (active, completed, etc.)
+
+        - `day_limit`: Limit number of days returned (1-50)
+
+
+        **Response Structure:**
+
+        - Days ordered by sequence (1, 2, 3...)
+
+        - Stops ordered by sequence within each day (START → VIA → END)
+
+        - Complete stop details including place information
+
+        - Summary statistics (total days, total stops)
+
+
+        **Authentication Required:** You must be the trip owner.'
+      operationId: list_days_complete_trips__trip_id__days_complete_get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Trip Id
+      - name: include_place
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include place information with stops
+          default: false
+          title: Include Place
+        description: Include place information with stops
+      - name: include_route_info
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include route information
+          default: false
+          title: Include Route Info
+        description: Include route information
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Filter days by status
+          title: Status
+        description: Filter days by status
+      - name: day_limit
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 50
+            minimum: 1
+          - type: 'null'
+          description: Limit number of days returned
+          title: Day Limit
+        description: Limit number of days returned
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          title: Authorization
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DaysCompleteResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - BearerAuth: []
   /stops/types:
     get:
       tags:
@@ -1776,15 +2479,46 @@ paths:
         - ✅ **String-based filters**: Advanced filter syntax
 
 
-        **Filter Examples:**
+        **Valid Stop Types (case-insensitive):**
 
-        - `filter_string=stop_type:eq:food,duration_min:gte:30`
+        - `accommodation` - Hotels, hostels, vacation rentals, camping
 
-        - `sort_string=seq:asc,duration_min:desc`
+        - `food` - Restaurants, cafes, bars, food trucks
 
-        - `search=restaurant` (searches notes and place names)
+        - `attraction` - Museums, landmarks, monuments
 
-        - `duration_min=30&duration_max=120` (duration range)
+        - `activity` - Tours, sports, entertainment
+
+        - `shopping` - Stores, markets, shopping centers
+
+        - `gas` - Gas stations, EV charging stations
+
+        - `transport` - Airports, train stations, bus stops
+
+        - `services` - Banks, post offices, government offices
+
+        - `nature` - Parks, beaches, hiking trails
+
+        - `culture` - Museums, theaters, galleries
+
+        - `nightlife` - Bars, clubs, entertainment venues
+
+        - `other` - Miscellaneous stops
+
+
+        **Parameter Examples:**
+
+        - `stop_type=food` - Filter for food-related stops
+
+        - `stop_type=ACCOMMODATION` - Filter for accommodation (case-insensitive)
+
+        - `filter_string=stop_type:eq:food,duration_min:gte:30` - Advanced filtering
+
+        - `sort_string=seq:asc,duration_min:desc` - Sort by sequence, then duration
+
+        - `search=restaurant` - Search in notes and place names
+
+        - `duration_min=30&duration_max=120` - Duration range filter
 
 
         **Supported Filter Fields:**
@@ -1828,9 +2562,19 @@ paths:
           anyOf:
           - type: string
           - type: 'null'
-          description: Filter by stop type (case-insensitive)
+          description: 'Filter by stop type (case-insensitive). Valid values: accommodation,
+            food, attraction, activity, shopping, gas, transport, services, nature,
+            culture, nightlife, other'
+          examples:
+          - food
+          - accommodation
+          - attraction
+          - FOOD
+          - ACCOMMODATION
           title: Stop Type
-        description: Filter by stop type (case-insensitive)
+        description: 'Filter by stop type (case-insensitive). Valid values: accommodation,
+          food, attraction, activity, shopping, gas, transport, services, nature,
+          culture, nightlife, other'
       - name: filter_string
         in: query
         required: false
@@ -1839,6 +2583,9 @@ paths:
           - type: string
           - type: 'null'
           description: 'Advanced filters: field:operator:value,field2:op2:val2'
+          examples:
+          - stop_type:eq:food,duration_min:gte:30
+          - seq:gte:2,notes:contains:restaurant
           title: Filter String
         description: 'Advanced filters: field:operator:value,field2:op2:val2'
       - name: sort_string
@@ -1849,6 +2596,9 @@ paths:
           - type: string
           - type: 'null'
           description: 'Sort: field:direction,field2:direction2'
+          examples:
+          - seq:asc,duration_min:desc
+          - created_at:desc
           title: Sort String
         description: 'Sort: field:direction,field2:direction2'
       - name: duration_min
@@ -1858,9 +2608,13 @@ paths:
           anyOf:
           - type: integer
           - type: 'null'
-          description: Filter by minimum duration
+          description: Filter by minimum duration (in minutes)
+          examples:
+          - 30
+          - 60
+          - 120
           title: Duration Min
-        description: Filter by minimum duration
+        description: Filter by minimum duration (in minutes)
       - name: duration_max
         in: query
         required: false
@@ -1868,9 +2622,13 @@ paths:
           anyOf:
           - type: integer
           - type: 'null'
-          description: Filter by maximum duration
+          description: Filter by maximum duration (in minutes)
+          examples:
+          - 120
+          - 240
+          - 480
           title: Duration Max
-        description: Filter by maximum duration
+        description: Filter by maximum duration (in minutes)
       - name: search
         in: query
         required: false
@@ -1879,6 +2637,10 @@ paths:
           - type: string
           - type: 'null'
           description: Search in stop notes and place names
+          examples:
+          - restaurant
+          - museum
+          - hotel
           title: Search
         description: Search in stop notes and place names
       - name: authorization
@@ -1906,13 +2668,16 @@ paths:
       tags:
       - stops
       summary: Create Stop
-      description: '**Create New Stop**
-
-
-        Add a new stop to a specific day.
-
-
-        **Authentication Required:** You must be the trip owner.'
+      description: "**Create New Stop**\n\nAdd a new stop to a specific day.\n\n**Request\
+        \ Body Example:**\n```json\n{\n  \"place_id\": \"01K4AHPK4S1KVTYDB5ASTGTM8K\"\
+        ,\n  \"seq\": 2,\n  \"kind\": \"via\",\n  \"stop_type\": \"food\",\n  \"duration_minutes\"\
+        : 90,\n  \"notes\": \"Lunch at local restaurant\",\n  \"priority\": 2\n}\n\
+        ```\n\n**Valid Stop Types:**\n- `accommodation`, `food`, `attraction`, `activity`,\
+        \ `shopping`\n- `gas`, `transport`, `services`, `nature`, `culture`, `nightlife`,\
+        \ `other`\n\n**Valid Stop Kinds:**\n- `start` - Starting point (sequence 1,\
+        \ fixed)\n- `via` - Intermediate stop (can be reordered)\n- `end` - Final\
+        \ destination (fixed)\n\n**Authentication Required:** You must be the trip\
+        \ owner."
       operationId: create_stop_stops__trip_id__days__day_id__stops_post
       parameters:
       - name: trip_id
@@ -3889,6 +4654,28 @@ paths:
       - BearerAuth: []
 components:
   schemas:
+    AIError:
+      properties:
+        error_code:
+          type: string
+          title: Error Code
+          description: Error code identifier
+        message:
+          type: string
+          title: Message
+          description: Human-readable error message
+        details:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Details
+          description: Additional error details
+      type: object
+      required:
+      - error_code
+      - message
+      title: AIError
+      description: Error response for AI operations
     APIError:
       properties:
         error_code:
@@ -3956,6 +4743,53 @@ components:
       - error
       title: APIErrorResponse
       description: Complete error response wrapper
+    AppLoginRequest:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        password:
+          type: string
+          minLength: 1
+          title: Password
+          description: User password
+      type: object
+      required:
+      - email
+      - password
+      title: AppLoginRequest
+      description: Simple app login request schema
+    AppLoginResponse:
+      properties:
+        authenticated:
+          type: boolean
+          title: Authenticated
+          description: Whether authentication was successful
+        user_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: User Id
+          description: User ID if authenticated
+        message:
+          type: string
+          title: Message
+          description: Authentication result message
+      type: object
+      required:
+      - authenticated
+      - message
+      title: AppLoginResponse
+      description: Simple app login response schema
+    AvoidanceOption:
+      type: string
+      enum:
+      - tolls
+      - ferries
+      - highways
+      title: AvoidanceOption
+      description: Avoidance options
     BoundingBox:
       properties:
         minLat:
@@ -4221,7 +5055,7 @@ components:
           allOf:
           - $ref: '#/components/schemas/DayStatus'
           description: Day status
-          default: active
+          default: ACTIVE
         rest_day:
           type: boolean
           title: Rest Day
@@ -4281,7 +5115,7 @@ components:
           weather: sunny
         rest_day: false
         seq: 1
-        status: active
+        status: ACTIVE
         trip_id: 01K367ED2RPNS2H19J8PQDNXFB
         trip_start_date: '2024-07-15'
         updated_at: '2024-01-15T10:30:00Z'
@@ -4303,7 +5137,7 @@ components:
           allOf:
           - $ref: '#/components/schemas/DayStatus'
           description: Day status
-          default: active
+          default: ACTIVE
         rest_day:
           type: boolean
           title: Rest Day
@@ -4408,7 +5242,6 @@ components:
         status:
           type: string
           title: Status
-          description: Day status (ACTIVE, INACTIVE, DELETED)
         start:
           anyOf:
           - type: object
@@ -4475,6 +5308,19 @@ components:
           pattern: ^(car|motorcycle|bike)$
           title: Profile
           default: car
+        optimize:
+          type: boolean
+          title: Optimize
+          description: Optimize stop order between start and end points
+          default: false
+        fixed_stop_indices:
+          anyOf:
+          - items:
+              type: integer
+            type: array
+          - type: 'null'
+          title: Fixed Stop Indices
+          description: Indices of stops that cannot be reordered (0-based)
         options:
           anyOf:
           - $ref: '#/components/schemas/RouteOptions'
@@ -4487,7 +5333,7 @@ components:
       - stops
       - end
       title: DayRouteBreakdownRequest
-      description: Request for detailed day route breakdown
+      description: Request for detailed day route breakdown with optimization support
     DayRouteBreakdownResponse:
       properties:
         trip_id:
@@ -4510,6 +5356,23 @@ components:
           type: array
           title: Segments
           description: Individual route segments
+        optimized_order:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/RoutePoint'
+            type: array
+          - type: 'null'
+          title: Optimized Order
+          description: Optimized order of all points (start + stops + end) if optimization
+            was requested
+        optimization_savings:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Optimization Savings
+          description: 'Savings from optimization: distance_km_saved, duration_min_saved'
         summary:
           type: object
           title: Summary
@@ -4519,6 +5382,23 @@ components:
           format: date-time
           title: Computed At
           description: When this breakdown was computed
+        route_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Route Version Id
+          description: ID of the route version if route was persisted to database
+        route_persisted:
+          type: boolean
+          title: Route Persisted
+          description: Whether this route was saved to the database
+          default: false
+        persistence_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Persistence Reason
+          description: Reason why route was or wasn't persisted
       type: object
       required:
       - trip_id
@@ -4529,7 +5409,7 @@ components:
       - summary
       - computed_at
       title: DayRouteBreakdownResponse
-      description: Detailed breakdown of a day's route
+      description: Detailed breakdown of a day's route with optimization results
     DayStatus:
       type: string
       enum:
@@ -4537,7 +5417,32 @@ components:
       - INACTIVE
       - DELETED
       title: DayStatus
-      description: 'Day status - ACTIVE: normal day, INACTIVE: disabled day, DELETED: soft deleted day (filtered from responses)'
+    DaySummary:
+      properties:
+        day:
+          type: integer
+          title: Day
+          description: Day sequence number
+        start:
+          type: boolean
+          title: Start
+          description: Whether day has a start stop
+        stops:
+          type: integer
+          title: Stops
+          description: Total number of stops in this day
+        end:
+          type: boolean
+          title: End
+          description: Whether day has an end stop
+      type: object
+      required:
+      - day
+      - start
+      - stops
+      - end
+      title: DaySummary
+      description: Summary of a single day with start/end status and stop count
     DayUpdate:
       properties:
         seq:
@@ -4567,6 +5472,188 @@ components:
       type: object
       title: DayUpdate
       description: Schema for updating a day
+    DayWithAllStops:
+      properties:
+        deleted_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$
+          format: date-time
+          title: Deleted At
+          description: 'Soft delete timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)'
+          examples:
+          - '2024-01-15T10:30:00Z'
+          - null
+        created_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$
+          format: date-time
+          title: Created At
+          description: 'Creation timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)'
+          examples:
+          - '2024-01-15T10:30:00Z'
+        updated_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$
+          format: date-time
+          title: Updated At
+          description: 'Last update timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)'
+          examples:
+          - '2024-01-15T10:30:00Z'
+        id:
+          type: string
+          maxLength: 26
+          minLength: 26
+          title: Id
+          description: Unique identifier (ULID format)
+          examples:
+          - 01K4AHPK4S1KVTYDB5ASTGTM8K
+        seq:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Seq
+          description: Day sequence number (1, 2, 3, etc.)
+        status:
+          allOf:
+          - $ref: '#/components/schemas/DayStatus'
+          description: Day status
+          default: ACTIVE
+        rest_day:
+          type: boolean
+          title: Rest Day
+          description: Whether this is a rest day (no driving)
+          default: false
+        notes:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Notes
+          description: Additional notes and metadata
+        trip_id:
+          type: string
+          title: Trip Id
+          description: ID of the trip this day belongs to
+          examples:
+          - 01K367ED2RPNS2H19J8PQDNXFB
+        trip_start_date:
+          anyOf:
+          - type: string
+          - type: 'null'
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          format: date
+          title: Trip Start Date
+          description: 'Trip start date for calculated_date computation (ISO-8601:
+            YYYY-MM-DD)'
+          examples:
+          - '2024-07-15'
+        stops:
+          items: {}
+          type: array
+          title: Stops
+          description: All stops for this day ordered by sequence
+        stops_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Stops Count
+          description: Number of stops in this day
+        has_route:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Has Route
+          description: Whether this day has a computed route
+        calculated_date:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Calculated Date
+          description: 'Calculate the date for this day based on trip start date and
+            sequence
+
+
+            Returns ISO-8601 formatted date string for consistency with API standards'
+          readOnly: true
+      type: object
+      required:
+      - created_at
+      - updated_at
+      - id
+      - seq
+      - trip_id
+      - calculated_date
+      title: DayWithAllStops
+      description: Day schema with complete stops array included
+      examples:
+      - calculated_date: '2024-07-15'
+        created_at: '2024-01-15T10:30:00Z'
+        id: 01K4AHPK4S1KVTYDB5ASTGTM8K
+        notes:
+          activities:
+          - hiking
+          weather: sunny
+        rest_day: false
+        seq: 1
+        status: ACTIVE
+        trip_id: 01K367ED2RPNS2H19J8PQDNXFB
+        trip_start_date: '2024-07-15'
+        updated_at: '2024-01-15T10:30:00Z'
+      timezone_info:
+        description: All datetime fields (created_at, updated_at, deleted_at) are
+          in UTC timezone
+        format: ISO-8601 (YYYY-MM-DDTHH:MM:SSZ)
+        timezone: UTC
+    DaysCompleteResponse:
+      properties:
+        trip_id:
+          type: string
+          title: Trip Id
+        days:
+          items:
+            $ref: '#/components/schemas/DayWithAllStops'
+          type: array
+          title: Days
+          description: All days ordered by sequence with their stops
+        total_days:
+          type: integer
+          title: Total Days
+        total_stops:
+          type: integer
+          title: Total Stops
+      type: object
+      required:
+      - trip_id
+      - days
+      - total_days
+      - total_stops
+      title: DaysCompleteResponse
+      description: Complete days response with all stops included
+      examples:
+      - days:
+        - calculated_date: '2024-07-15'
+          has_route: true
+          id: 01K4J0CYB3YSGWDZB9N92V3ZQ5
+          rest_day: false
+          seq: 1
+          status: active
+          stops:
+          - id: 01K4J0CYB3YSGWDZB9N92V3ZQ6
+            kind: start
+            place:
+              address: 123 Main St, Tel Aviv
+              name: Grand Hotel
+            seq: 1
+            stop_type: ACCOMMODATION
+          stops_count: 3
+          trip_id: 01K4J0CYB3YSGWDZB9N92V3ZQ4
+        total_days: 2
+        total_stops: 4
+        trip_id: 01K4J0CYB3YSGWDZB9N92V3ZQ4
     EnumDocumentation:
       properties:
         name:
@@ -4705,6 +5792,32 @@ components:
       - lon
       - formatted_address
       title: GeocodingResult
+    GeometryBounds:
+      properties:
+        min_lat:
+          type: number
+          title: Min Lat
+          description: Minimum latitude
+        min_lng:
+          type: number
+          title: Min Lng
+          description: Minimum longitude
+        max_lat:
+          type: number
+          title: Max Lat
+          description: Maximum latitude
+        max_lng:
+          type: number
+          title: Max Lng
+          description: Maximum longitude
+      type: object
+      required:
+      - min_lat
+      - min_lng
+      - max_lat
+      - max_lng
+      title: GeometryBounds
+      description: Geometry bounding box
     GeometryType:
       type: string
       enum:
@@ -4745,15 +5858,131 @@ components:
       - uptime_s
       title: HealthResponse
       description: Health check response
+    LocationRequest:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique location identifier
+        type:
+          allOf:
+          - $ref: '#/components/schemas/LocationType'
+          description: Location type
+        name:
+          type: string
+          title: Name
+          description: Location name
+        lat:
+          type: number
+          maximum: 90.0
+          minimum: -90.0
+          title: Lat
+          description: Latitude
+        lng:
+          type: number
+          maximum: 180.0
+          minimum: -180.0
+          title: Lng
+          description: Longitude
+        fixed_seq:
+          type: boolean
+          title: Fixed Seq
+          description: Whether sequence is fixed
+        seq:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Seq
+          description: Sequence number (required if fixed_seq=true for STOP)
+      type: object
+      required:
+      - id
+      - type
+      - name
+      - lat
+      - lng
+      - fixed_seq
+      title: LocationRequest
+      description: Location in optimization request
+    LocationResponse:
+      properties:
+        seq:
+          type: integer
+          title: Seq
+          description: Sequence number
+        id:
+          type: string
+          title: Id
+          description: Location identifier
+        type:
+          allOf:
+          - $ref: '#/components/schemas/LocationType'
+          description: Location type
+        name:
+          type: string
+          title: Name
+          description: Location name
+        lat:
+          type: number
+          title: Lat
+          description: Latitude
+        lng:
+          type: number
+          title: Lng
+          description: Longitude
+        fixed_seq:
+          type: boolean
+          title: Fixed Seq
+          description: Whether sequence was fixed
+        eta_min:
+          type: number
+          title: Eta Min
+          description: ETA from START in minutes
+        leg_distance_km:
+          type: number
+          title: Leg Distance Km
+          description: Distance from previous location in km
+        leg_duration_min:
+          type: number
+          title: Leg Duration Min
+          description: Duration from previous location in minutes
+      type: object
+      required:
+      - seq
+      - id
+      - type
+      - name
+      - lat
+      - lng
+      - fixed_seq
+      - eta_min
+      - leg_distance_km
+      - leg_duration_min
+      title: LocationResponse
+      description: Location in optimization response
+    LocationType:
+      type: string
+      enum:
+      - START
+      - STOP
+      - END
+      title: LocationType
+      description: Location type enumeration
     LoginRequest:
       properties:
         email:
           type: string
           format: email
           title: Email
+        password:
+          type: string
+          minLength: 1
+          title: Password
+          description: User password
       type: object
       required:
       - email
+      - password
       title: LoginRequest
       description: Login request schema
     LoginResponse:
@@ -4761,10 +5990,22 @@ components:
         access_token:
           type: string
           title: Access Token
+        refresh_token:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Refresh Token
+          description: JWT refresh token
         token_type:
           type: string
           title: Token Type
           default: bearer
+        expires_in:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Expires In
+          description: Token expiry time in seconds
         user:
           $ref: '#/components/schemas/UserProfile'
       type: object
@@ -4773,6 +6014,147 @@ components:
       - user
       title: LoginResponse
       description: Login response schema
+    LogoutResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+          description: Logout success message
+          default: Successfully logged out
+      type: object
+      title: LogoutResponse
+      description: Logout response schema
+    Objective:
+      type: string
+      enum:
+      - time
+      - distance
+      title: Objective
+      description: Optimization objective
+    OptimizationData:
+      properties:
+        locations:
+          items:
+            $ref: '#/components/schemas/LocationRequest'
+          type: array
+          title: Locations
+          description: List of locations to optimize
+      type: object
+      required:
+      - locations
+      title: OptimizationData
+      description: Optimization data container
+    OptimizationDiagnostics:
+      properties:
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+          description: Warning messages
+        assumptions:
+          items:
+            type: string
+          type: array
+          title: Assumptions
+          description: Assumptions made
+        computation_notes:
+          items:
+            type: string
+          type: array
+          title: Computation Notes
+          description: Computation notes
+      type: object
+      title: OptimizationDiagnostics
+      description: Optimization diagnostics
+    OptimizationError:
+      properties:
+        code:
+          type: string
+          title: Code
+          description: Error code
+        message:
+          type: string
+          title: Message
+          description: Error message
+      type: object
+      required:
+      - code
+      - message
+      title: OptimizationError
+      description: Optimization error
+    OptimizationGeometry:
+      properties:
+        format:
+          type: string
+          title: Format
+          description: Geometry format
+          default: geojson
+        route:
+          allOf:
+          - $ref: '#/components/schemas/RouteGeometry'
+          description: Route geometry
+        bounds:
+          allOf:
+          - $ref: '#/components/schemas/GeometryBounds'
+          description: Geometry bounds
+      type: object
+      required:
+      - route
+      - bounds
+      title: OptimizationGeometry
+      description: Optimization geometry container
+    OptimizationMeta:
+      properties:
+        version:
+          type: string
+          title: Version
+          description: API version
+          default: '1.0'
+        objective:
+          $ref: '#/components/schemas/Objective'
+        vehicle_profile:
+          allOf:
+          - $ref: '#/components/schemas/VehicleProfile'
+          description: Vehicle profile
+        units:
+          allOf:
+          - $ref: '#/components/schemas/Units'
+          description: Units system
+          default: metric
+        avoid:
+          items:
+            $ref: '#/components/schemas/AvoidanceOption'
+          type: array
+          title: Avoid
+          description: Avoidance options
+      type: object
+      required:
+      - objective
+      - vehicle_profile
+      title: OptimizationMeta
+      description: Optimization metadata
+    OptimizationSummary:
+      properties:
+        stop_count:
+          type: integer
+          title: Stop Count
+          description: Number of STOP locations
+        total_distance_km:
+          type: number
+          title: Total Distance Km
+          description: Total route distance in km
+        total_duration_min:
+          type: number
+          title: Total Duration Min
+          description: Total route duration in minutes
+      type: object
+      required:
+      - stop_count
+      - total_distance_km
+      - total_duration_min
+      title: OptimizationSummary
+      description: Optimization summary statistics
     PaginatedResponse_PlaceSearchItem_:
       properties:
         data:
@@ -5284,6 +6666,38 @@ components:
       type: object
       title: PlaceUpdate
       description: Schema for updating a place
+    RefreshRequest:
+      properties:
+        refresh_token:
+          type: string
+          title: Refresh Token
+          description: JWT refresh token
+      type: object
+      required:
+      - refresh_token
+      title: RefreshRequest
+      description: Token refresh request schema
+    RefreshResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+          description: New JWT access token
+        token_type:
+          type: string
+          title: Token Type
+          description: Token type
+          default: bearer
+        expires_in:
+          type: integer
+          title: Expires In
+          description: Token expiry time in seconds
+      type: object
+      required:
+      - access_token
+      - expires_in
+      title: RefreshResponse
+      description: Token refresh response schema
     RouteCommitRequest:
       properties:
         preview_token:
@@ -5328,6 +6742,26 @@ components:
       - profile
       title: RouteComputeRequest
       description: Route computation request
+    RouteGeometry:
+      properties:
+        type:
+          type: string
+          title: Type
+          description: GeoJSON type
+          default: LineString
+        coordinates:
+          items:
+            items:
+              type: number
+            type: array
+          type: array
+          title: Coordinates
+          description: GeoJSON coordinates [lng, lat]
+      type: object
+      required:
+      - coordinates
+      title: RouteGeometry
+      description: Route geometry data
     RouteLegSchema:
       properties:
         id:
@@ -5380,6 +6814,143 @@ components:
       - updated_at
       title: RouteLegSchema
       description: Route leg schema
+    RouteOptimizationErrorResponse:
+      properties:
+        version:
+          type: string
+          title: Version
+          description: API version
+          default: '1.0'
+        errors:
+          items:
+            $ref: '#/components/schemas/OptimizationError'
+          type: array
+          title: Errors
+          description: List of errors
+      type: object
+      required:
+      - errors
+      title: RouteOptimizationErrorResponse
+      description: Route optimization error response
+    RouteOptimizationRequest:
+      properties:
+        prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt
+          description: Free-form optimization instructions
+        meta:
+          $ref: '#/components/schemas/OptimizationMeta'
+        data:
+          allOf:
+          - $ref: '#/components/schemas/OptimizationData'
+          description: Location data
+      type: object
+      required:
+      - meta
+      - data
+      title: RouteOptimizationRequest
+      description: Route optimization request schema
+    RouteOptimizationResponse:
+      properties:
+        version:
+          type: string
+          title: Version
+          description: API version
+          default: '1.0'
+        objective:
+          allOf:
+          - $ref: '#/components/schemas/Objective'
+          description: Optimization objective used
+        units:
+          allOf:
+          - $ref: '#/components/schemas/Units'
+          description: Units used
+        ordered:
+          items:
+            $ref: '#/components/schemas/LocationResponse'
+          type: array
+          title: Ordered
+          description: Optimized location order
+        summary:
+          allOf:
+          - $ref: '#/components/schemas/OptimizationSummary'
+          description: Route summary
+        geometry:
+          allOf:
+          - $ref: '#/components/schemas/OptimizationGeometry'
+          description: Route geometry
+        diagnostics:
+          allOf:
+          - $ref: '#/components/schemas/OptimizationDiagnostics'
+          description: Diagnostics information
+        errors:
+          items:
+            $ref: '#/components/schemas/OptimizationError'
+          type: array
+          title: Errors
+          description: Error list
+      type: object
+      required:
+      - objective
+      - units
+      - ordered
+      - summary
+      - geometry
+      - diagnostics
+      title: RouteOptimizationResponse
+      description: Route optimization response schema
+    RouteOptimizeRequest:
+      properties:
+        prompt:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Prompt
+          description: Instructions for the AI on how to process the route data
+        data:
+          anyOf:
+          - type: string
+          - type: object
+          title: Data
+          description: The route data to analyze (stops with coordinates and addresses)
+        response_structure:
+          type: string
+          maxLength: 1000
+          minLength: 1
+          title: Response Structure
+          description: Template/example showing the desired output format
+      type: object
+      required:
+      - prompt
+      - data
+      - response_structure
+      title: RouteOptimizeRequest
+      description: Request schema for AI route optimization
+    RouteOptimizeResponse:
+      properties:
+        result:
+          type: string
+          title: Result
+          description: The AI-generated optimized route order
+        raw_response:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Raw Response
+          description: Full OpenAI API response for debugging
+        metadata:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Metadata
+          description: Additional metadata (tokens used, model used, etc.)
+      type: object
+      required:
+      - result
+      title: RouteOptimizeResponse
+      description: Response schema for AI route optimization
     RouteOptions:
       properties:
         avoid_highways:
@@ -5764,6 +7335,17 @@ components:
       description: Search result sorting options
     Stop:
       properties:
+        deleted_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$
+          format: date-time
+          title: Deleted At
+          description: 'Soft delete timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)'
+          examples:
+          - '2024-01-15T10:30:00Z'
+          - null
         created_at:
           anyOf:
           - type: string
@@ -6002,6 +7584,45 @@ components:
       - kind
       title: StopCreate
       description: Schema for creating a stop
+      examples:
+      - arrival_time: '15:00:00'
+        departure_time: 09:00:00
+        duration_minutes: 720
+        fixed: true
+        kind: start
+        notes: Hotel check-in
+        place_id: 01K4AHPK4S1KVTYDB5ASTGTM8K
+        priority: 1
+        seq: 1
+        stop_type: accommodation
+      - arrival_time: '12:30:00'
+        departure_time: '14:00:00'
+        duration_minutes: 90
+        fixed: false
+        kind: via
+        notes: Lunch at local restaurant
+        place_id: 01K4AHPK4S1KVTYDB5ASTGTM8L
+        priority: 2
+        seq: 2
+        stop_type: food
+      - arrival_time: '15:00:00'
+        departure_time: '17:30:00'
+        duration_minutes: 150
+        fixed: false
+        kind: via
+        notes: Visit historic museum
+        place_id: 01K4AHPK4S1KVTYDB5ASTGTM8M
+        priority: 1
+        seq: 3
+        stop_type: attraction
+      - arrival_time: '18:00:00'
+        fixed: true
+        kind: end
+        notes: Evening hotel
+        place_id: 01K4AHPK4S1KVTYDB5ASTGTM8N
+        priority: 1
+        seq: 4
+        stop_type: accommodation
     StopKind:
       type: string
       enum:
@@ -6165,6 +7786,17 @@ components:
       description: Schema for updating a stop
     StopWithPlace:
       properties:
+        deleted_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$
+          format: date-time
+          title: Deleted At
+          description: 'Soft delete timestamp in UTC (ISO-8601: YYYY-MM-DDTHH:MM:SSZ)'
+          examples:
+          - '2024-01-15T10:30:00Z'
+          - null
         created_at:
           anyOf:
           - type: string
@@ -6488,6 +8120,75 @@ components:
           in UTC timezone
         format: ISO-8601 (YYYY-MM-DDTHH:MM:SSZ)
         timezone: UTC
+    TripCompleteResponse:
+      properties:
+        trip:
+          allOf:
+          - $ref: '#/components/schemas/Trip'
+          description: Complete trip information
+        days:
+          items:
+            $ref: '#/components/schemas/DayWithAllStops'
+          type: array
+          title: Days
+          description: All days ordered by sequence with their stops
+        summary:
+          allOf:
+          - $ref: '#/components/schemas/TripSummary'
+          description: Trip summary statistics
+      type: object
+      required:
+      - trip
+      - days
+      - summary
+      title: TripCompleteResponse
+      description: Complete trip response with all days and stops included
+      examples:
+      - days:
+        - calculated_date: '2024-07-15'
+          has_route: true
+          id: 01K4J0CYB3YSGWDZB9N92V3ZQ5
+          rest_day: false
+          seq: 1
+          status: active
+          stops:
+          - id: 01K4J0CYB3YSGWDZB9N92V3ZQ6
+            kind: start
+            place:
+              address: 123 Main St, Tel Aviv
+              latitude: 32.0853
+              longitude: 34.7818
+              name: Grand Hotel
+            seq: 1
+            stop_type: ACCOMMODATION
+          stops_count: 3
+          trip_id: 01K4J0CYB3YSGWDZB9N92V3ZQ4
+        summary:
+          status_breakdown:
+            active: 2
+            completed: 0
+          stop_type_breakdown:
+            ACCOMMODATION: 2
+            ATTRACTION: 1
+            RESTAURANT: 1
+          total_days: 2
+          total_stops: 4
+          trip_duration_days: 7
+        trip:
+          created_at: '2024-01-15T10:30:00Z'
+          created_by_user:
+            email: user@example.com
+            id: 01K4J0CYB3YSGWDZB9N92V3ZQ3
+            name: John Doe
+          destination: Israel
+          id: 01K4J0CYB3YSGWDZB9N92V3ZQ4
+          is_published: false
+          slug: summer-road-trip-2024
+          start_date: '2024-07-15'
+          status: active
+          timezone: Asia/Jerusalem
+          title: Summer Road Trip 2024
+          updated_at: '2024-01-15T10:30:00Z'
     TripCreate:
       properties:
         title:
@@ -6670,6 +8371,160 @@ components:
         Tracks the current state of a user''s membership in a trip,
 
         from invitation through active participation.'
+    TripShort:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Trip ID
+        slug:
+          type: string
+          title: Slug
+          description: Trip URL slug
+        title:
+          type: string
+          title: Title
+          description: Trip title
+        destination:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Destination
+          description: Trip destination
+        start_date:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Start Date
+          description: Trip start date in ISO-8601 format
+        timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timezone
+          description: Trip timezone
+        status:
+          allOf:
+          - $ref: '#/components/schemas/TripStatus'
+          description: Trip status
+        is_published:
+          type: boolean
+          title: Is Published
+          description: Whether trip is published
+        created_by:
+          type: string
+          title: Created By
+          description: User ID who created the trip
+        members:
+          items:
+            type: string
+          type: array
+          title: Members
+          description: List of member user IDs
+        total_days:
+          type: integer
+          title: Total Days
+          description: Total number of days in the trip
+        days:
+          items:
+            $ref: '#/components/schemas/DaySummary'
+          type: array
+          title: Days
+          description: Day summaries with start/end status and stop counts
+      type: object
+      required:
+      - id
+      - slug
+      - title
+      - status
+      - is_published
+      - created_by
+      - total_days
+      - days
+      title: TripShort
+      description: Short trip format with basic info and day summaries
+      examples:
+      - created_by: 01K5P68329YFSCTV777EB4GM9P
+        days:
+        - day: 1
+          end: true
+          start: true
+          stops: 4
+        - day: 2
+          end: true
+          start: true
+          stops: 3
+        - day: 3
+          end: true
+          start: true
+          stops: 2
+        destination: Europe
+        id: 01K5RPT2HKFSMBAEDXKJ7K8E99
+        is_published: false
+        members: []
+        slug: summer-road-trip-2024
+        start_date: '2024-07-15'
+        status: active
+        timezone: Europe/London
+        title: Summer Road Trip 2024
+        total_days: 3
+    TripShortResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/TripShort'
+          type: array
+          title: Data
+          description: List of trips in short format
+        meta:
+          type: object
+          title: Meta
+          description: Pagination metadata
+        links:
+          additionalProperties:
+            anyOf:
+            - type: string
+            - type: 'null'
+          type: object
+          title: Links
+          description: Pagination links
+      type: object
+      required:
+      - data
+      - meta
+      - links
+      title: TripShortResponse
+      description: Response for short format trip listing
+      examples:
+      - data:
+        - created_by: 01K5P68329YFSCTV777EB4GM9P
+          days:
+          - day: 1
+            end: true
+            start: true
+            stops: 4
+          - day: 2
+            end: true
+            start: true
+            stops: 3
+          destination: Europe
+          id: 01K5RPT2HKFSMBAEDXKJ7K8E99
+          is_published: false
+          members: []
+          slug: summer-road-trip-2024
+          start_date: '2024-07-15'
+          status: active
+          timezone: Europe/London
+          title: Summer Road Trip 2024
+          total_days: 2
+        links:
+          first: /trips?page=1
+          last: /trips?page=1
+        meta:
+          current_page: 1
+          per_page: 20
+          total_items: 1
+          total_pages: 1
     TripStatus:
       type: string
       enum:
@@ -6684,6 +8539,40 @@ components:
         Represents the current state of a trip throughout its lifecycle,
 
         from initial planning to completion and archival.'
+    TripSummary:
+      properties:
+        total_days:
+          type: integer
+          title: Total Days
+          description: Total number of days in the trip
+        total_stops:
+          type: integer
+          title: Total Stops
+          description: Total number of stops across all days
+        trip_duration_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Trip Duration Days
+          description: Duration of the trip in days
+        status_breakdown:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Status Breakdown
+          description: Count of days by status
+        stop_type_breakdown:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Stop Type Breakdown
+          description: Count of stops by type
+      type: object
+      required:
+      - total_days
+      - total_stops
+      title: TripSummary
+      description: Summary statistics for a trip
     TripUpdate:
       properties:
         slug:
@@ -6741,6 +8630,13 @@ components:
       type: object
       title: TripUpdate
       description: Schema for updating a trip with ISO-8601 date standardization
+    Units:
+      type: string
+      enum:
+      - metric
+      - imperial
+      title: Units
+      description: Units enumeration
     UserProfile:
       properties:
         id:
@@ -6784,6 +8680,14 @@ components:
       - msg
       - type
       title: ValidationError
+    VehicleProfile:
+      type: string
+      enum:
+      - car
+      - bike
+      - foot
+      title: VehicleProfile
+      description: Vehicle profile enumeration
     app__api__v1__places__models__PlaceSearchResult:
       properties:
         id:
@@ -6873,6 +8777,23 @@ components:
       bearerFormat: JWT
       description: 'Enter your Bearer token in the format: Bearer <token>'
   examples:
+    AppLoginExample:
+      summary: Simple app login request
+      value:
+        email: user@example.com
+        password: user_password
+    AppLoginSuccessResponse:
+      summary: Successful app login response
+      value:
+        authenticated: true
+        user_id: 01K5P68329YFSCTV777EB4GM9P
+        message: Authentication successful
+    AppLoginFailureResponse:
+      summary: Failed app login response
+      value:
+        authenticated: false
+        user_id: null
+        message: Invalid email or password
     TripCreateExample:
       summary: Create a new trip
       value:
@@ -6880,63 +8801,29 @@ components:
         destination: Israel
         start_date: '2024-06-15'
         timezone: Asia/Jerusalem
-    TripCreateResponse:
-      summary: Enhanced trip creation response
+    DayDeleteExample:
+      summary: Soft delete a day with cascade
       value:
-        trip:
-          id: 01K4AHPK4S1KVTYDB5ASTGTM8K
-          title: Israel Adventure
-          destination: Israel
-          start_date: '2024-06-15'
-          slug: israel-adventure
-        next_steps:
-        - Create your first day in Israel
-        - Add start and end locations for your journey
-        suggestions:
-          planning_timeline: You have plenty of time to plan - consider researching
-            seasonal activities
-    RoutingErrorExample:
-      summary: Enhanced routing error response
-      value:
-        detail: Coordinates are outside the supported geographic region
-        error_type: OUT_OF_BOUNDS
-        supported_regions:
-        - Israel
-        - Palestine
-        suggestions:
-        - Try using nearby major cities or landmarks
-        - Check if all locations are in the same general region
-        - Consider splitting the trip into multiple days
-    PlaceSearchExample:
-      summary: Place search with caching
-      value:
-        places:
-        - id: 01K4AHPK4S1KVTYDB5ASTGTM8K
-          name: Western Wall
-          formatted_address: Western Wall, Jerusalem, Israel
-          lat: 31.7767
-          lon: 35.2345
-          place_type: attraction
-        total: 1
-        cached: true
-        cache_age: 120
+        status: DELETED
 servers:
 - url: http://localhost:8000
   description: Development server
-- url: https://api.mytrip.com
+- url: https://mytrips-api.bahar.co.il
   description: Production server
 tags:
 - name: auth
-  description: Authentication and user management
+  description: Authentication and user management (including new app-login endpoint)
 - name: trips
   description: Trip creation and management with enhanced validation
 - name: days
-  description: Day-by-day trip planning and organization
+  description: Day-by-day trip planning and organization with soft delete support
 - name: stops
-  description: Comprehensive stops management with 12 categories
+  description: Comprehensive stops management with 12 categories and soft delete
 - name: places
   description: Place search and geocoding with aggressive caching
 - name: routing
   description: Intelligent routing with hybrid GraphHopper integration
 - name: settings
   description: User settings and preferences
+- name: ai
+  description: AI-powered route optimization and suggestions

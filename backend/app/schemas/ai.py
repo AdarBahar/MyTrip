@@ -1,7 +1,7 @@
 """
 AI-related Pydantic schemas
 """
-from typing import Any
+from typing import Any, Union, Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +15,7 @@ class RouteOptimizeRequest(BaseModel):
         min_length=1,
         max_length=2000,
     )
-    data: str | dict[str, Any] = Field(
+    data: Union[str, Dict[str, Any]] = Field(
         ...,
         description="The route data to analyze (stops with coordinates and addresses)",
     )
@@ -31,10 +31,10 @@ class RouteOptimizeResponse(BaseModel):
     """Response schema for AI route optimization"""
 
     result: str = Field(..., description="The AI-generated optimized route order")
-    raw_response: dict[str, Any] | None = Field(
+    raw_response: Optional[Dict[str, Any]] = Field(
         None, description="Full OpenAI API response for debugging"
     )
-    metadata: dict[str, Any] | None = Field(
+    metadata: Optional[Dict[str, Any]] = Field(
         None, description="Additional metadata (tokens used, model used, etc.)"
     )
 
@@ -44,4 +44,4 @@ class AIError(BaseModel):
 
     error_code: str = Field(..., description="Error code identifier")
     message: str = Field(..., description="Human-readable error message")
-    details: dict[str, Any] | None = Field(None, description="Additional error details")
+    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
