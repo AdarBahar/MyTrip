@@ -5893,6 +5893,11 @@
             "type": "string",
             "title": "Day Id"
           },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Day status (ACTIVE, INACTIVE, DELETED)"
+          },
           "start": {
             "anyOf": [
               {
@@ -5968,7 +5973,8 @@
         },
         "type": "object",
         "required": [
-          "day_id"
+          "day_id",
+          "status"
         ],
         "title": "DayRouteActiveSummary"
       },
@@ -6090,10 +6096,12 @@
       "DayStatus": {
         "type": "string",
         "enum": [
-          "active",
-          "inactive"
+          "ACTIVE",
+          "INACTIVE",
+          "DELETED"
         ],
-        "title": "DayStatus"
+        "title": "DayStatus",
+        "description": "Day status - ACTIVE: normal day, INACTIVE: disabled day, DELETED: soft deleted day (filtered from responses)"
       },
       "DayUpdate": {
         "properties": {
@@ -8881,13 +8889,19 @@
             "type": "object",
             "title": "By Type",
             "description": "Count of stops by type (accommodation, food, attraction, etc.)"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "description": "Count of active days in the trip"
           }
         },
         "type": "object",
         "required": [
           "trip_id",
           "total_stops",
-          "by_type"
+          "by_type",
+          "days"
         ],
         "title": "StopsSummary",
         "description": "Schema for trip stops summary"
