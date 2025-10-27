@@ -77,7 +77,7 @@ class Settings(BaseSettings):
         default=True, description="Fail startup if DB_HOST differs from PROD_DB_HOST"
     )
     PROD_DB_HOST: str = Field(
-        default="srv1135.hstgr.io",
+        default="your-production-db-host",
         description="Expected production DB host when enforcement is enabled",
     )
 
