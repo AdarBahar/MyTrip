@@ -155,8 +155,36 @@ class Settings(BaseSettings):
                 f"@{location_host}:{self.LOCATION_DB_PORT}/{self.LOCATION_DB_NAME}"
             )
 
-    model_config = ConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
+    model_config = ConfigDict(
+        env_file=[".env.production", ".env.local", ".env"],
+        case_sensitive=True,
+        extra="ignore"
+    )
 
 
 # Global settings instance
-settings = Settings()
+try:
+    settings = Settings()
+except Exception as e:
+    import os
+    print(f"❌ Failed to load settings: {e}")
+    print(f"🔍 Current working directory: {os.getcwd()}")
+    print(f"🔍 Environment files checked: .env.production, .env.local, .env")
+
+    # Check which files exist
+    env_files = [".env.production", ".env.local", ".env"]
+    for env_file in env_files:
+        exists = os.path.exists(env_file)
+        print(f"🔍 {env_file}: {'✅ exists' if exists else '❌ not found'}")
+
+    # Show some key environment variables
+    key_vars = ["DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+    print(f"🔍 Environment variables:")
+    for var in key_vars:
+        value = os.environ.get(var, "NOT SET")
+        # Mask password for security
+        if "PASSWORD" in var and value != "NOT SET":
+            value = "*" * len(value)
+        print(f"   {var}: {value}")
+
+    raise
