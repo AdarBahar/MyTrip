@@ -121,7 +121,7 @@ cd /opt/dayplanner
 if [ ! -f ".env.production" ]; then
     log_info "Creating production environment file..."
     cp deployment/production.env .env.production
-    
+
     log_warning "IMPORTANT: You need to configure the environment file!"
     log_info "Please edit /opt/dayplanner/.env.production with your settings:"
     echo "  • Database connection details"
@@ -129,7 +129,7 @@ if [ ! -f ".env.production" ]; then
     echo "  • Domain name and URLs"
     echo "  • Security settings"
     echo
-    
+
     read -p "Do you want to edit the environment file now? (Y/n): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then

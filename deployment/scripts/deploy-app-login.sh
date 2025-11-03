@@ -47,7 +47,7 @@ check_root() {
 # Create backup of current deployment
 create_backup() {
     log_info "Creating backup of current deployment..."
-    
+
     if [ -d "$APP_DIR" ]; then
         mkdir -p "$BACKUP_DIR"
         tar -czf "$BACKUP_DIR/backup_$TIMESTAMP.tar.gz" -C "$APP_DIR" . 2>/dev/null || true
@@ -124,34 +124,34 @@ update_repository() {
 # Install/update Python dependencies
 update_python_dependencies() {
     log_info "Updating Python dependencies..."
-    
+
     cd "$APP_DIR/backend"
-    
+
     # Activate virtual environment
     if [ ! -d "venv" ]; then
         python3 -m venv venv
         log_info "Created new virtual environment"
     fi
-    
+
     source venv/bin/activate
-    
+
     # Update pip and install dependencies
     pip install --upgrade pip
     pip install -r requirements.txt
-    
+
     # Verify bcrypt and passlib are installed for app-login
     pip install bcrypt==4.0.1 passlib[bcrypt]==1.7.4
-    
+
     log_success "Python dependencies updated"
 }
 
 # Run database migrations
 run_migrations() {
     log_info "Running database migrations..."
-    
+
     cd "$APP_DIR/backend"
     source venv/bin/activate
-    
+
     # Load production environment
     if [ -f "$APP_DIR/.env.production" ]; then
         export $(cat "$APP_DIR/.env.production" | grep -v '^#' | xargs)
@@ -160,45 +160,45 @@ run_migrations() {
         log_error "Please create this file based on deployment/production.env.example"
         exit 1
     fi
-    
+
     # Run prestart checks
     python prestart.py
-    
+
     # Run migrations
     alembic upgrade head
-    
+
     log_success "Database migrations completed"
 }
 
 # Test app-login endpoint functionality
 test_app_login() {
     log_info "Testing app-login endpoint functionality..."
-    
+
     cd "$APP_DIR/backend"
     source venv/bin/activate
-    
+
     # Load environment
     export $(cat "$APP_DIR/.env.production" | grep -v '^#' | xargs)
-    
+
     # Create test users if they don't exist
     python scripts/create_simple_users.py || log_warning "Test user creation failed or users already exist"
-    
+
     log_success "App-login endpoint preparation completed"
 }
 
 # Restart backend service
 restart_backend() {
     log_info "Restarting backend service..."
-    
+
     # Stop service gracefully
     systemctl stop dayplanner-backend.service || log_warning "Backend service was not running"
-    
+
     # Wait a moment
     sleep 3
-    
+
     # Start service
     systemctl start dayplanner-backend.service
-    
+
     # Check status
     if systemctl is-active --quiet dayplanner-backend.service; then
         log_success "Backend service restarted successfully"
@@ -212,10 +212,10 @@ restart_backend() {
 # Health check including app-login endpoint
 health_check() {
     log_info "Performing comprehensive health check..."
-    
+
     # Wait for service to be ready
     sleep 10
-    
+
     # Check general health
     if curl -f http://localhost:8000/health > /dev/null 2>&1; then
         log_success "General health check passed"
@@ -223,7 +223,7 @@ health_check() {
         log_error "General health check failed"
         return 1
     fi
-    
+
     # Check app-login endpoint exists
     if curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/auth/app-login -X POST -H "Content-Type: application/json" -d '{}' | grep -q "422"; then
         log_success "App-login endpoint is accessible (returns validation error as expected)"
@@ -231,27 +231,27 @@ health_check() {
         log_error "App-login endpoint is not accessible"
         return 1
     fi
-    
+
     # Check Swagger documentation
     if curl -f http://localhost:8000/docs > /dev/null 2>&1; then
         log_success "Swagger documentation is accessible"
     else
         log_warning "Swagger documentation check failed"
     fi
-    
+
     log_success "All health checks passed"
 }
 
 # Update OpenAPI documentation
 update_documentation() {
     log_info "Updating OpenAPI documentation..."
-    
+
     cd "$APP_DIR/backend"
     source venv/bin/activate
-    
+
     # Export OpenAPI specs
     python scripts/export_openapi.py || log_warning "OpenAPI export failed, but continuing..."
-    
+
     log_success "Documentation update completed"
 }
 
@@ -263,7 +263,7 @@ main() {
     log_info "  - Updated OpenAPI documentation"
     log_info "  - Enhanced authentication features"
     log_info "  - Python type hint compatibility fixes"
-    
+
     check_root
     create_backup
     update_repository
@@ -273,7 +273,7 @@ main() {
     restart_backend
     health_check
     update_documentation
-    
+
     log_success "Deployment completed successfully!"
     log_info ""
     log_info "🎉 New Features Available:"

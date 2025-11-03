@@ -64,6 +64,11 @@ debug_*.sh
 cleanup_*.sh
 *_with_password.sh
 *_with_credentials.sh
+deploy-*.sh
+fix_*.sh
+apply_*.sh
+verify_*.py
+setup.sh
 
 # Temporary and backup files
 *.tmp
@@ -120,6 +125,23 @@ Thumbs.db
 deployment/production/
 deployment/user-space/
 deployment/scripts/deploy-config.local.env*
+
+# Development directories and files
+.devcontainer/
+infrastructure/
+.reports/
+tools/
+scripts/
+
+# Development configuration and data files
+api_test_config.json
+api_test_report_*.json
+AUTH_LOGIN.json
+openapi.json
+todo.txt
+times.tsv
+Makefile
+docker-compose.yml
 
 # Build artifacts (will be rebuilt on server)
 build/
