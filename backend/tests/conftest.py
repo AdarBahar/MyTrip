@@ -41,6 +41,13 @@ def is_production_test_mode() -> bool:
     if "--production" in sys.argv:
         return True
 
+    # Auto-detect production environment if we're in /opt/dayplanner
+    # and not explicitly running in test mode
+    if os.path.exists("/opt/dayplanner") and os.getcwd().startswith("/opt/dayplanner"):
+        # Only use production mode if explicitly requested or if no test database config is set
+        if not os.environ.get("DB_HOST", "").startswith(":memory:"):
+            return True
+
     return False
 
 
