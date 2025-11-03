@@ -214,3 +214,50 @@ class TestAPIVersioning:
         data = response.json()
         
         assert data["info"]["title"] == "MyTrip - Road Trip Planner API"
+
+
+class TestLocationHealthEndpoint:
+    """Test location health check endpoint"""
+
+    def test_location_health_check(self, client: TestClient):
+        """Test location health check endpoint"""
+        response = client.get("/location/health")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Check required fields
+        assert "status" in data
+        assert "module" in data
+        assert "database" in data
+
+        # Check values
+        assert data["module"] == "location"
+        assert data["status"] in ["ok", "error"]
+
+        # Check database info
+        database_info = data["database"]
+        assert "connected" in database_info
+        assert isinstance(database_info["connected"], bool)
+
+    def test_location_health_no_auth_required(self, client: TestClient):
+        """Test location health check doesn't require authentication"""
+        response = client.get("/location/health")
+
+        # Should work without authentication
+        assert response.status_code == 200
+
+    def test_location_vs_main_health(self, client: TestClient):
+        """Test that location health is separate from main health"""
+        main_response = client.get("/health")
+        location_response = client.get("/location/health")
+
+        assert main_response.status_code == 200
+        assert location_response.status_code == 200
+
+        main_data = main_response.json()
+        location_data = location_response.json()
+
+        # Should have different response structures
+        assert "module" not in main_data  # Main health doesn't have module
+        assert location_data["module"] == "location"  # Location health has module
