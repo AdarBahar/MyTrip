@@ -33,12 +33,25 @@ except ImportError:
 
 def is_production_test_mode() -> bool:
     """Check if we're running tests in production mode (use production database)"""
-    return "--production" in sys.argv or os.environ.get("PYTEST_PRODUCTION_MODE") == "true"
+    # Check environment variable (set by run_tests.py before pytest starts)
+    if os.environ.get("PYTEST_PRODUCTION_MODE") == "true":
+        return True
+
+    # Fallback: check command line arguments
+    if "--production" in sys.argv:
+        return True
+
+    return False
 
 
 # Only set test environment variables when actually running tests
 if is_running_tests():
-    if is_production_test_mode():
+    production_mode = is_production_test_mode()
+    print(f"🔍 Debug: PYTEST_PRODUCTION_MODE = {os.environ.get('PYTEST_PRODUCTION_MODE')}")
+    print(f"🔍 Debug: --production in sys.argv = {'--production' in sys.argv}")
+    print(f"🔍 Debug: production_mode = {production_mode}")
+
+    if production_mode:
         print("🏭 Production test mode - using production database configuration")
         # Don't override database settings, use production configuration
     else:

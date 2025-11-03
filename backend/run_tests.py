@@ -145,9 +145,7 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
             "--cov-fail-under=80"
         ])
 
-    # Set production mode if requested
-    if production:
-        os.environ["PYTEST_PRODUCTION_MODE"] = "true"
+    # Production mode environment variable already set at function start
 
     # Print test summary
     mode_indicator = "🏭 PRODUCTION" if production else "🧪 DEVELOPMENT"
@@ -237,7 +235,12 @@ def main():
     if args.info:
         print_test_info()
         return 0
-    
+
+    # Set production mode environment variable BEFORE running tests
+    # This ensures conftest.py can detect it when imported
+    if args.production:
+        os.environ["PYTEST_PRODUCTION_MODE"] = "true"
+
     # Run the tests
     exit_code = run_tests(
         test_type=args.test_type,
