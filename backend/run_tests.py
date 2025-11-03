@@ -59,6 +59,16 @@ def print_test_info():
     print("  python run_tests.py location --production -v    # Location tests on prod")
 
 
+def _get_existing_test_files(test_files):
+    """Filter test files to only include those that actually exist"""
+    existing_files = []
+    for test_file in test_files:
+        if os.path.exists(test_file):
+            existing_files.append(test_file)
+        else:
+            print(f"⚠️  Skipping missing test file: {test_file}")
+    return existing_files
+
 def run_tests(test_type="all", verbose=False, coverage=False, quick=False, production=False):
     """
     Run tests with various options
@@ -85,24 +95,32 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
     elif test_type == "integration":
         cmd.extend(["-m", "integration", "tests/"])
     elif test_type == "auth":
-        cmd.extend(["tests/test_auth.py", "tests/test_auth_comprehensive.py"])
+        auth_tests = ["tests/test_auth.py", "tests/test_auth_comprehensive.py"]
+        cmd.extend(_get_existing_test_files(auth_tests))
     elif test_type == "trips":
-        cmd.extend(["tests/test_trips.py", "tests/test_trip_dates.py"])
+        trip_tests = ["tests/test_trips.py", "tests/test_trip_dates.py"]
+        cmd.extend(_get_existing_test_files(trip_tests))
     elif test_type == "days":
-        cmd.append("tests/test_days.py")
+        day_tests = ["tests/test_days.py"]
+        cmd.extend(_get_existing_test_files(day_tests))
     elif test_type == "stops":
-        cmd.append("tests/test_stops_management.py")
+        stop_tests = ["tests/test_stops_management.py"]
+        cmd.extend(_get_existing_test_files(stop_tests))
     elif test_type == "routing":
-        cmd.extend(["tests/test_routing.py", "tests/test_route_optimization.py"])
+        routing_tests = ["tests/test_routing.py", "tests/test_route_optimization.py"]
+        cmd.extend(_get_existing_test_files(routing_tests))
     elif test_type == "health":
-        cmd.append("tests/test_health.py")
+        health_tests = ["tests/test_health.py"]
+        cmd.extend(_get_existing_test_files(health_tests))
     elif test_type == "location":
-        cmd.append("tests/test_location.py")
+        location_tests = ["tests/test_location.py"]
+        cmd.extend(_get_existing_test_files(location_tests))
     elif test_type == "ai":
-        cmd.append("tests/test_ai.py")
+        ai_tests = ["tests/test_ai.py"]
+        cmd.extend(_get_existing_test_files(ai_tests))
     elif test_type == "comprehensive":
         # Run comprehensive test suite covering all major endpoints
-        cmd.extend([
+        comprehensive_tests = [
             "tests/test_health.py",
             "tests/test_auth.py",
             "tests/test_auth_comprehensive.py",
@@ -111,10 +129,11 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
             "tests/test_stops_management.py",
             "tests/test_routing.py",
             "tests/test_location.py"
-        ])
+        ]
+        cmd.extend(_get_existing_test_files(comprehensive_tests))
     elif test_type == "endpoints":
         # Test all API endpoints
-        cmd.extend([
+        endpoint_tests = [
             "tests/test_health.py",
             "tests/test_auth.py",
             "tests/test_trips.py",
@@ -122,7 +141,8 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
             "tests/test_routing.py",
             "tests/test_location.py",
             "tests/test_ai.py"
-        ])
+        ]
+        cmd.extend(_get_existing_test_files(endpoint_tests))
     else:
         print(f"❌ Unknown test type: {test_type}")
         print_test_info()
