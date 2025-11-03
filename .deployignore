@@ -1,0 +1,165 @@
+# .deployignore - Files to exclude from production deployment
+# This file works with rsync --exclude-from flag
+
+# Documentation files
+*.md
+docs/
+README*
+CHANGELOG*
+LICENSE*
+CONTRIBUTING*
+
+# Development and deployment documentation
+URGENT_*.md
+DEPLOYMENT_*.md
+SECURITY_*.md
+COMPLETE_*.md
+PRODUCTION_*.md
+*_GUIDE.md
+*_INSTRUCTIONS.md
+*_READY.md
+*_CHECKLIST.md
+*_COMPARISON.md
+
+# Git and version control
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Development configuration
+.pre-commit-config.yaml
+.secrets.baseline
+.editorconfig
+.eslintrc*
+.prettierrc*
+tsconfig.json
+jest.config.js
+
+# Test files
+test_*.py
+*_test.py
+*_test.js
+*_test.ts
+tests/
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+cypress/
+e2e/
+
+# Development scripts
+deploy_*.sh
+test_*.sh
+debug_*.sh
+cleanup_*.sh
+*_with_password.sh
+*_with_credentials.sh
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.log
+tmp/
+temp/
+logs/
+
+# Node.js development
+node_modules/
+.next/
+coverage/
+.nyc_output
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python development
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+
+# Environment files (use production-specific ones)
+.env
+.env.*
+!.env.production
+!.env.example
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Development deployment files
+deployment/production/
+deployment/user-space/
+deployment/scripts/deploy-config.local.env*
+
+# Build artifacts (will be rebuilt on server)
+build/
+dist/
+out/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Certificates and keys (should be managed separately)
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cert
+
+# GraphHopper data (downloaded separately)
+data/graphhopper/
+*.osm.pbf
+
+# Docker files (not used in current deployment)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Package lock files (will be regenerated)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Reports and analytics
+.reports/
+analytics/
+
+# Backup directories
+*-backups/
+backups/
+
+# Development manifests
+deployment_manifest.json

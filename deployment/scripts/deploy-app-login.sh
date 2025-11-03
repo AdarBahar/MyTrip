@@ -57,26 +57,68 @@ create_backup() {
     fi
 }
 
-# Clone or update repository
+# Clone or update repository with clean deployment
 update_repository() {
-    log_info "Updating repository..."
-    
-    if [ -d "$APP_DIR/.git" ]; then
-        cd "$APP_DIR"
-        git fetch origin
-        git reset --hard origin/main
-        log_success "Repository updated to latest main branch"
-    else
-        log_info "Cloning repository..."
-        rm -rf "$APP_DIR"
-        git clone "$REPO_URL" "$APP_DIR"
-        cd "$APP_DIR"
-        log_success "Repository cloned"
-    fi
-    
+    log_info "Updating repository with clean deployment..."
+
+    # Create temporary directory for clean checkout
+    TEMP_DIR="/tmp/dayplanner-deploy-$(date +%s)"
+    mkdir -p "$TEMP_DIR"
+
+    # Clone fresh copy to temp directory
+    log_info "Cloning repository to temporary location..."
+    git clone "$REPO_URL" "$TEMP_DIR"
+    cd "$TEMP_DIR"
+
     # Show latest commits
     log_info "Latest commits:"
     git log --oneline -5
+
+    # Create backup of current deployment if it exists
+    if [ -d "$APP_DIR" ]; then
+        BACKUP_DIR="/opt/dayplanner-backups/pre-deploy-$(date +%Y%m%d_%H%M%S)"
+        log_info "Creating backup at: $BACKUP_DIR"
+        mkdir -p "$(dirname "$BACKUP_DIR")"
+        cp -r "$APP_DIR" "$BACKUP_DIR"
+    fi
+
+    # Ensure target directory exists
+    mkdir -p "$APP_DIR"
+
+    # Use rsync to deploy only necessary files
+    log_info "Deploying clean production files..."
+    if [ -f "$TEMP_DIR/.deployignore" ]; then
+        rsync -av --delete --exclude-from="$TEMP_DIR/.deployignore" \
+              "$TEMP_DIR/" "$APP_DIR/"
+        log_success "Clean deployment completed using .deployignore"
+    else
+        log_warning ".deployignore not found, using manual exclusions"
+        rsync -av --delete \
+              --exclude='.git' \
+              --exclude='*.md' \
+              --exclude='docs/' \
+              --exclude='test_*.py' \
+              --exclude='*_test.py' \
+              --exclude='deploy_*.sh' \
+              --exclude='.vscode/' \
+              --exclude='.github/' \
+              --exclude='node_modules/' \
+              --exclude='__pycache__/' \
+              --exclude='*.log' \
+              --exclude='*.tmp' \
+              --exclude='deployment/production/' \
+              --exclude='deployment/user-space/' \
+              "$TEMP_DIR/" "$APP_DIR/"
+        log_success "Clean deployment completed using manual exclusions"
+    fi
+
+    # Cleanup temp directory
+    rm -rf "$TEMP_DIR"
+
+    # Set proper ownership
+    chown -R www-data:www-data "$APP_DIR"
+
+    cd "$APP_DIR"
 }
 
 # Install/update Python dependencies

@@ -11,9 +11,19 @@ This guide covers deploying the DayPlanner application to production without Doc
 
 ## Quick Start
 
-1. **Clone the repository:**
+1. **Deploy clean repository:**
    ```bash
-   git clone https://github.com/AdarBahar/MyTrip.git /opt/dayplanner
+   # Clone to temporary location
+   git clone https://github.com/AdarBahar/MyTrip.git /tmp/dayplanner-deploy
+   cd /tmp/dayplanner-deploy
+
+   # Deploy only necessary files using rsync
+   sudo mkdir -p /opt/dayplanner
+   sudo rsync -av --exclude-from=.deployignore /tmp/dayplanner-deploy/ /opt/dayplanner/
+
+   # Set ownership and cleanup
+   sudo chown -R www-data:www-data /opt/dayplanner
+   rm -rf /tmp/dayplanner-deploy
    cd /opt/dayplanner
    ```
 
@@ -52,12 +62,18 @@ sudo chown -R www-data:www-data /opt/dayplanner
 ### 2. Application Setup
 
 ```bash
-# Clone repository
-sudo git clone https://github.com/AdarBahar/MyTrip.git /opt/dayplanner
-cd /opt/dayplanner
+# Deploy clean repository
+git clone https://github.com/AdarBahar/MyTrip.git /tmp/dayplanner-deploy
+cd /tmp/dayplanner-deploy
 
-# Set ownership
+# Deploy only necessary files
+sudo mkdir -p /opt/dayplanner
+sudo rsync -av --exclude-from=.deployignore /tmp/dayplanner-deploy/ /opt/dayplanner/
+
+# Set ownership and cleanup
 sudo chown -R www-data:www-data /opt/dayplanner
+rm -rf /tmp/dayplanner-deploy
+cd /opt/dayplanner
 
 # Configure environment
 sudo cp deployment/production.env .env.production

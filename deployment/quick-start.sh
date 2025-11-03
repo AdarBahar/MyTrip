@@ -90,9 +90,31 @@ if [ ! -f "deployment/production.env" ]; then
     exit 1
 fi
 
-# Copy repository to /opt/dayplanner
-log_info "Copying application to /opt/dayplanner..."
-cp -r . /opt/dayplanner/
+# Deploy clean application to /opt/dayplanner
+log_info "Deploying clean application to /opt/dayplanner..."
+if [ -f ".deployignore" ]; then
+    rsync -av --exclude-from=.deployignore . /opt/dayplanner/
+    log_success "Clean deployment completed using .deployignore"
+else
+    log_warning ".deployignore not found, using manual exclusions"
+    rsync -av \
+          --exclude='.git' \
+          --exclude='*.md' \
+          --exclude='docs/' \
+          --exclude='test_*.py' \
+          --exclude='*_test.py' \
+          --exclude='deploy_*.sh' \
+          --exclude='.vscode/' \
+          --exclude='.github/' \
+          --exclude='node_modules/' \
+          --exclude='__pycache__/' \
+          --exclude='*.log' \
+          --exclude='*.tmp' \
+          --exclude='deployment/production/' \
+          --exclude='deployment/user-space/' \
+          . /opt/dayplanner/
+    log_success "Clean deployment completed using manual exclusions"
+fi
 cd /opt/dayplanner
 
 # Environment setup
