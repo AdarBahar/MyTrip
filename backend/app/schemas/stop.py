@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from app.core.datetime_utils import time_serializer, time_validator
 from app.models.stop import StopKind, StopType
-from app.schemas.base import BaseResponseSchema, BaseResponseWithSoftDelete, ISO8601Time
+from app.schemas.base import BaseResponseWithSoftDelete, ISO8601Time
 
 
 class StopBase(BaseModel):

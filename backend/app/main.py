@@ -26,6 +26,7 @@ from app.api.auth.jwt_router import router as jwt_auth_router
 from app.api.auth.router import router as auth_router
 from app.api.days.router import router as days_router
 from app.api.enums.router import router as enums_router
+from app.api.location.router import router as location_router
 from app.api.monitoring.router import router as monitoring_router
 from app.api.places.router import router as places_router
 from app.api.routing.router import router as routing_router
@@ -701,6 +702,7 @@ app.include_router(routing_router, prefix="/routing", tags=["routing"])
 app.include_router(days_router, prefix="/trips/{trip_id}/days", tags=["days"])
 app.include_router(stops_router, prefix="/stops", tags=["stops"])
 app.include_router(places_router, prefix="/places", tags=["places", "places-typeahead"])
+app.include_router(location_router, prefix="/location", tags=["location"])
 app.include_router(settings_router, tags=["settings"])
 app.include_router(monitoring_router, prefix="/monitoring", tags=["monitoring"])
 app.include_router(enums_router, prefix="/enums", tags=["enums"])

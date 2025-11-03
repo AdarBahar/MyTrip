@@ -399,7 +399,9 @@ async def list_stops(
         # Eager-load place and avoid N+1
         query = query.options(joinedload(Stop.place))
 
-    query = query.filter(Stop.day_id == day_id, Stop.trip_id == trip_id, Stop.deleted_at.is_(None))
+    query = query.filter(
+        Stop.day_id == day_id, Stop.trip_id == trip_id, Stop.deleted_at.is_(None)
+    )
 
     # Initialize filtering service
     filtering_service = FilteringService()
@@ -836,7 +838,13 @@ async def reorder_stops(
     get_day_and_verify_access(day_id, trip_id, current_user, db)
 
     # Get all stops for the day (only non-deleted)
-    stops = db.query(Stop).filter(Stop.day_id == day_id, Stop.trip_id == trip_id, Stop.deleted_at.is_(None)).all()
+    stops = (
+        db.query(Stop)
+        .filter(
+            Stop.day_id == day_id, Stop.trip_id == trip_id, Stop.deleted_at.is_(None)
+        )
+        .all()
+    )
 
     stop_dict = {stop.id: stop for stop in stops}
 
@@ -916,21 +924,34 @@ async def get_trip_stops_summary(
     )
 
     # Get total stops count (only non-deleted stops)
-    total_stops = db.query(func.count(Stop.id)).filter(Stop.trip_id == trip_id, Stop.deleted_at.is_(None)).scalar()
+    total_stops = (
+        db.query(func.count(Stop.id))
+        .filter(Stop.trip_id == trip_id, Stop.deleted_at.is_(None))
+        .scalar()
+    )
 
     # Get active days count (only non-deleted days)
-    active_days = db.query(func.count(Day.id)).filter(
-        Day.trip_id == trip_id,
-        Day.deleted_at.is_(None),
-        Day.status != DayStatus.DELETED
-    ).scalar()
+    active_days = (
+        db.query(func.count(Day.id))
+        .filter(
+            Day.trip_id == trip_id,
+            Day.deleted_at.is_(None),
+            Day.status != DayStatus.DELETED,
+        )
+        .scalar()
+    )
 
     # Format response
     summary_dict = {stop_type.value.lower(): 0 for stop_type in StopType}
     for stop_type, count in summary:
         summary_dict[stop_type.value.lower()] = count
 
-    return {"trip_id": trip_id, "total_stops": total_stops, "by_type": summary_dict, "days": active_days}
+    return {
+        "trip_id": trip_id,
+        "total_stops": total_stops,
+        "by_type": summary_dict,
+        "days": active_days,
+    }
 
 
 # Bulk Operations Endpoints

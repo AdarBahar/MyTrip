@@ -31,13 +31,32 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
         return self.CORS_ORIGINS
 
-    # Database settings (required in runtime environment)
+    # Main Database settings (required in runtime environment)
     DB_CLIENT: str = Field(default="mysql", description="Database client type")
     DB_HOST: str = Field(..., description="Database host")
     DB_PORT: int = Field(default=3306, description="Database port")
     DB_NAME: str = Field(..., description="Database name")
     DB_USER: str = Field(..., description="Database username")
     DB_PASSWORD: str = Field(..., description="Database password")
+
+    # Location Database settings (separate database for location endpoints)
+    LOCATION_DB_CLIENT: str = Field(
+        default="mysql", description="Location database client type"
+    )
+    LOCATION_DB_HOST: str = Field(
+        default="", description="Location database host (defaults to main DB_HOST)"
+    )
+    LOCATION_DB_PORT: int = Field(default=3306, description="Location database port")
+    LOCATION_DB_NAME: str = Field(
+        default="your-location-database-name", description="Location database name"
+    )
+    LOCATION_DB_USER: str = Field(
+        default="your-location-database-user", description="Location database username"
+    )
+    LOCATION_DB_PASSWORD: str = Field(
+        default="your-location-database-password",
+        description="Location database password",
+    )
 
     # Routing settings
     GRAPHHOPPER_MODE: str = Field(
@@ -83,7 +102,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """Get database URL"""
+        """Get main database URL"""
         from urllib.parse import quote_plus
 
         if self.DB_CLIENT.lower() == "mysql":
@@ -105,6 +124,35 @@ class Settings(BaseSettings):
             return (
                 f"postgresql://{self.DB_USER}:{encoded_password}"
                 f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+            )
+
+    @property
+    def location_database_url(self) -> str:
+        """Get location database URL"""
+        from urllib.parse import quote_plus
+
+        # Use main DB host if location host is not specified
+        location_host = self.LOCATION_DB_HOST or self.DB_HOST
+
+        if self.LOCATION_DB_CLIENT.lower() == "mysql":
+            # URL encode the password to handle special characters
+            encoded_password = quote_plus(self.LOCATION_DB_PASSWORD)
+            return (
+                f"mysql+pymysql://{self.LOCATION_DB_USER}:{encoded_password}"
+                f"@{location_host}:{self.LOCATION_DB_PORT}/{self.LOCATION_DB_NAME}?charset=utf8mb4"
+            )
+        elif self.LOCATION_DB_CLIENT.lower() == "sqlite":
+            # SQLite for testing
+            if location_host == ":memory:":
+                return "sqlite:///:memory:"
+            else:
+                return f"sqlite:///{self.LOCATION_DB_NAME}.db"
+        else:
+            # Fallback for PostgreSQL if needed
+            encoded_password = quote_plus(self.LOCATION_DB_PASSWORD)
+            return (
+                f"postgresql://{self.LOCATION_DB_USER}:{encoded_password}"
+                f"@{location_host}:{self.LOCATION_DB_PORT}/{self.LOCATION_DB_NAME}"
             )
 
     model_config = ConfigDict(env_file=".env", case_sensitive=True, extra="ignore")

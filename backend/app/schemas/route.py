@@ -2,8 +2,9 @@
 Route schemas
 """
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RoutePoint(BaseModel):
@@ -19,7 +20,7 @@ class RouteOptions(BaseModel):
 
     avoid_highways: bool = False
     avoid_tolls: bool = False
-    additional_options: Optional[Dict[str, Any]] = None
+    additional_options: Optional[dict[str, Any]] = None
 
 
 class RouteComputeRequest(BaseModel):
@@ -29,7 +30,7 @@ class RouteComputeRequest(BaseModel):
     optimize: bool = Field(
         False, description="Optimize VIA stop order (respects fixed stops)"
     )
-    fixed_stop_ids: Optional[List[str]] = Field(
+    fixed_stop_ids: Optional[list[str]] = Field(
         None,
         description="Explicit list of fixed stop IDs (optional; otherwise use DB flags)",
     )
@@ -41,14 +42,14 @@ class RoutePreview(BaseModel):
 
     total_km: float
     total_min: float
-    geometry: Dict[str, Any]  # GeoJSON LineString
-    legs: List[Dict[str, Any]]
-    debug: Dict[str, Any]
+    geometry: dict[str, Any]  # GeoJSON LineString
+    legs: list[dict[str, Any]]
+    debug: dict[str, Any]
     preview_token: str  # Token to commit this route
-    proposed_order: Optional[List[str]] = Field(
+    proposed_order: Optional[list[str]] = Field(
         None, description="Proposed stop ID order (START..VIA..END)"
     )
-    warnings: Optional[List[Dict[str, Any]]] = Field(
+    warnings: Optional[list[dict[str, Any]]] = Field(
         None, description="Potential issues like long detours"
     )
 
@@ -70,8 +71,8 @@ class RouteLegSchema(BaseModel):
     seq: int
     distance_km: Optional[float]
     duration_min: Optional[float]
-    geojson: Optional[Dict[str, Any]]
-    meta: Optional[Dict[str, Any]]
+    geojson: Optional[dict[str, Any]]
+    meta: Optional[dict[str, Any]]
     created_at: datetime
     updated_at: datetime
 
@@ -90,21 +91,21 @@ class RouteVersionSchema(BaseModel):
     profile_used: Optional[str]
     total_km: Optional[float]
     total_min: Optional[float]
-    geojson: Optional[Dict[str, Any]]
-    totals: Optional[Dict[str, Any]]
-    stop_snapshot: Optional[List[Dict[str, Any]]]
+    geojson: Optional[dict[str, Any]]
+    totals: Optional[dict[str, Any]]
+    stop_snapshot: Optional[list[dict[str, Any]]]
     created_by: str
     created_at: datetime
     updated_at: datetime
 
     # Optional relationships
-    legs: Optional[List[RouteLegSchema]] = None
+    legs: Optional[list[RouteLegSchema]] = None
 
 
 class RouteVersionList(BaseModel):
     """Route version list schema"""
 
-    routes: List[RouteVersionSchema]
+    routes: list[RouteVersionSchema]
 
 
 class RouteVersionUpdate(BaseModel):
@@ -114,18 +115,20 @@ class RouteVersionUpdate(BaseModel):
 class DayRouteActiveSummary(BaseModel):
     day_id: str
     status: str
-    start: Optional[Dict[str, Any]] = None
-    end: Optional[Dict[str, Any]] = None
+    start: Optional[dict[str, Any]] = None
+    end: Optional[dict[str, Any]] = None
     route_total_km: Optional[float] = None
     route_total_min: Optional[float] = None
-    route_coordinates: Optional[List[List[float]]] = None  # [lon, lat]
+    route_coordinates: Optional[list[list[float]]] = None  # [lon, lat]
     route_version_id: Optional[str] = None
 
+
 class BulkDayRouteSummaryRequest(BaseModel):
-    day_ids: List[str]
+    day_ids: list[str]
+
 
 class BulkDayRouteSummaryResponse(BaseModel):
-    summaries: List[DayRouteActiveSummary]
+    summaries: list[DayRouteActiveSummary]
 
 
 class DayRouteBreakdownRequest(BaseModel):
@@ -134,16 +137,14 @@ class DayRouteBreakdownRequest(BaseModel):
     trip_id: str
     day_id: str
     start: RoutePoint = Field(..., description="Starting point of the day")
-    stops: List[RoutePoint] = Field(..., description="Ordered list of stops to visit")
+    stops: list[RoutePoint] = Field(..., description="Ordered list of stops to visit")
     end: RoutePoint = Field(..., description="Ending point of the day")
     profile: str = Field(default="car", pattern="^(car|motorcycle|bike)$")
     optimize: bool = Field(
-        default=False,
-        description="Optimize stop order between start and end points"
+        default=False, description="Optimize stop order between start and end points"
     )
-    fixed_stop_indices: Optional[List[int]] = Field(
-        default=None,
-        description="Indices of stops that cannot be reordered (0-based)"
+    fixed_stop_indices: Optional[list[int]] = Field(
+        default=None, description="Indices of stops that cannot be reordered (0-based)"
     )
     options: Optional[RouteOptions] = None
 
@@ -155,9 +156,13 @@ class RouteSegment(BaseModel):
     to_point: RoutePoint = Field(..., description="Ending point of this segment")
     distance_km: float = Field(..., description="Distance in kilometers")
     duration_min: float = Field(..., description="Duration in minutes")
-    geometry: Dict[str, Any] = Field(..., description="GeoJSON LineString geometry")
-    instructions: List[Dict[str, Any]] = Field(..., description="Turn-by-turn instructions")
-    segment_type: str = Field(..., description="Type: start_to_stop, stop_to_stop, or stop_to_end")
+    geometry: dict[str, Any] = Field(..., description="GeoJSON LineString geometry")
+    instructions: list[dict[str, Any]] = Field(
+        ..., description="Turn-by-turn instructions"
+    )
+    segment_type: str = Field(
+        ..., description="Type: start_to_stop, stop_to_stop, or stop_to_end"
+    )
     segment_index: int = Field(..., description="Order index of this segment")
 
 
@@ -166,30 +171,32 @@ class DayRouteBreakdownResponse(BaseModel):
 
     trip_id: str
     day_id: str
-    total_distance_km: float = Field(..., description="Total distance for the entire day")
-    total_duration_min: float = Field(..., description="Total duration for the entire day")
-    segments: List[RouteSegment] = Field(..., description="Individual route segments")
-    optimized_order: Optional[List[RoutePoint]] = Field(
-        default=None,
-        description="Optimized order of all points (start + stops + end) if optimization was requested"
+    total_distance_km: float = Field(
+        ..., description="Total distance for the entire day"
     )
-    optimization_savings: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="Savings from optimization: distance_km_saved, duration_min_saved"
+    total_duration_min: float = Field(
+        ..., description="Total duration for the entire day"
     )
-    summary: Dict[str, Any] = Field(..., description="Additional summary information")
+    segments: list[RouteSegment] = Field(..., description="Individual route segments")
+    optimized_order: Optional[list[RoutePoint]] = Field(
+        default=None,
+        description="Optimized order of all points (start + stops + end) if optimization was requested",
+    )
+    optimization_savings: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Savings from optimization: distance_km_saved, duration_min_saved",
+    )
+    summary: dict[str, Any] = Field(..., description="Additional summary information")
     computed_at: datetime = Field(..., description="When this breakdown was computed")
 
     # Route persistence information
     route_version_id: Optional[str] = Field(
         default=None,
-        description="ID of the route version if route was persisted to database"
+        description="ID of the route version if route was persisted to database",
     )
     route_persisted: bool = Field(
-        default=False,
-        description="Whether this route was saved to the database"
+        default=False, description="Whether this route was saved to the database"
     )
     persistence_reason: Optional[str] = Field(
-        default=None,
-        description="Reason why route was or wasn't persisted"
+        default=None, description="Reason why route was or wasn't persisted"
     )

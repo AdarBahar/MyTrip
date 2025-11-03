@@ -11,7 +11,7 @@ Multiple sensitive credentials were accidentally committed to the repository. Th
 ## 🚨 Exposed Credentials (NOW REMOVED)
 
 1. **MySQL Database Password**: `[REDACTED: xbZe...Ttq]`
-2. **FTP Server Credentials**: `MyTrips@bahar.co.il` / `[REDACTED: OkYo...ava]`
+2. **FTP Server Credentials**: `[REDACTED]` / `[REDACTED]`
 3. **GitHub Personal Access Token**: `[REDACTED: ghp_...3x5]`
 4. **High Entropy Secrets**: Various configuration secrets
 
@@ -19,7 +19,7 @@ Multiple sensitive credentials were accidentally committed to the repository. Th
 
 ### 1. **Files Completely Removed**
 - `apply_auth_with_password.sh` (MySQL credentials)
-- `deployment/production/ftp_credentials.json` (FTP credentials)
+- `deployment/production/ftp_credentials.json` (Server credentials)
 - `scripts/cleanup_production_database.py` (DB credentials)
 - `scripts/run_production_cleanup.sh` (DB credentials)
 - `SECURITY_INCIDENT_RESPONSE.md` (exposed credentials)
@@ -35,7 +35,7 @@ Multiple sensitive credentials were accidentally committed to the repository. Th
 - ⚠️ **IMPORTANT**: All exposed credentials should be rotated immediately:
   - Change MySQL database password
   - Regenerate GitHub personal access token
-  - Update FTP server credentials
+  - Update server credentials
   - Rotate all API keys and secrets
 
 ## 🛡️ SECURITY MEASURES IMPLEMENTED
@@ -50,7 +50,7 @@ Multiple sensitive credentials were accidentally committed to the repository. Th
 *.pem
 *.p12
 *.pfx
-ftp_credentials.json
+server_credentials.json
 database_credentials.json
 api_keys.json
 *_with_password.sh
