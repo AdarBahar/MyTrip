@@ -147,7 +147,6 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
 
     # Set production mode if requested
     if production:
-        import os
         os.environ["PYTEST_PRODUCTION_MODE"] = "true"
 
     # Print test summary
