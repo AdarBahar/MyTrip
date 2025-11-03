@@ -156,7 +156,14 @@ class Settings(BaseSettings):
             )
 
     model_config = ConfigDict(
-        env_file=[".env.production", ".env.local", ".env"],
+        env_file=[
+            "../.env.production",  # Check parent directory first
+            ".env.production",     # Check current directory
+            "../.env.local",       # Check parent directory
+            ".env.local",          # Check current directory
+            "../.env",             # Check parent directory
+            ".env"                 # Check current directory
+        ],
         case_sensitive=True,
         extra="ignore"
     )
@@ -169,10 +176,14 @@ except Exception as e:
     import os
     print(f"❌ Failed to load settings: {e}")
     print(f"🔍 Current working directory: {os.getcwd()}")
-    print(f"🔍 Environment files checked: .env.production, .env.local, .env")
+    print(f"🔍 Environment files checked: parent and current directories")
 
     # Check which files exist
-    env_files = [".env.production", ".env.local", ".env"]
+    env_files = [
+        "../.env.production", ".env.production",
+        "../.env.local", ".env.local",
+        "../.env", ".env"
+    ]
     for env_file in env_files:
         exists = os.path.exists(env_file)
         print(f"🔍 {env_file}: {'✅ exists' if exists else '❌ not found'}")
