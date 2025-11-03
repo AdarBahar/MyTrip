@@ -7,7 +7,8 @@ Add these to your production `.env.production` file:
 ```bash
 # Location Database Configuration (Production)
 LOCATION_DB_CLIENT=mysql
-LOCATION_DB_HOST=  # Leave empty to use same host as main database
+# Leave LOCATION_DB_HOST empty to use same host as main database
+LOCATION_DB_HOST=
 LOCATION_DB_PORT=3306
 LOCATION_DB_NAME=baharc5_location
 LOCATION_DB_USER=baharc5_location
