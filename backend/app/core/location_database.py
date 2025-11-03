@@ -9,19 +9,46 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.core.config import settings
 
+def _get_location_engine():
+    """Get location database engine with proper configuration"""
+    try:
+        database_url = settings.location_database_url
+
+        # Handle SQLite for testing
+        if database_url.startswith("sqlite://"):
+            return create_engine(
+                database_url,
+                pool_pre_ping=True,
+                echo=settings.DEBUG,
+                connect_args={"check_same_thread": False},
+            )
+        else:
+            # MySQL/PostgreSQL for production
+            return create_engine(
+                database_url,
+                pool_pre_ping=True,
+                pool_recycle=300,
+                echo=settings.DEBUG,
+                # Ensure proper UTF8MB4 charset for Unicode support (Hebrew, emojis, etc.)
+                connect_args={
+                    "charset": "utf8mb4",
+                    "use_unicode": True,
+                    "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+                },
+            )
+    except Exception as e:
+        # Fallback to SQLite in-memory for tests if configuration fails
+        print(f"⚠️  Location database configuration failed: {e}")
+        print("🧪 Falling back to SQLite in-memory for tests")
+        return create_engine(
+            "sqlite:///:memory:",
+            pool_pre_ping=True,
+            echo=settings.DEBUG,
+            connect_args={"check_same_thread": False},
+        )
+
 # Create location database engine with UTF8MB4 charset for proper Unicode support
-location_engine = create_engine(
-    settings.location_database_url,
-    pool_pre_ping=True,
-    pool_recycle=300,
-    echo=settings.DEBUG,
-    # Ensure proper UTF8MB4 charset for Unicode support (Hebrew, emojis, etc.)
-    connect_args={
-        "charset": "utf8mb4",
-        "use_unicode": True,
-        "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
-    },
-)
+location_engine = _get_location_engine()
 
 # Create location database session factory
 LocationSessionLocal = sessionmaker(

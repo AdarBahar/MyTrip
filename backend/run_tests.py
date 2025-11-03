@@ -48,15 +48,18 @@ def print_test_info():
     print("  -v, --verbose - Verbose output")
     print("  -c, --coverage - Generate coverage report")
     print("  --quick       - Run quick tests only (exclude slow tests)")
+    print("  --production  - Run tests against production database")
 
     print("\n💡 Examples:")
     print("  python run_tests.py comprehensive --coverage")
     print("  python run_tests.py auth -v")
     print("  python run_tests.py location --quick")
     print("  python run_tests.py endpoints")
+    print("  python run_tests.py comprehensive --production  # Production database")
+    print("  python run_tests.py location --production -v    # Location tests on prod")
 
 
-def run_tests(test_type="all", verbose=False, coverage=False, quick=False):
+def run_tests(test_type="all", verbose=False, coverage=False, quick=False, production=False):
     """
     Run tests with various options
 
@@ -141,9 +144,22 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False):
             "--cov-report=term-missing",
             "--cov-fail-under=80"
         ])
-    
+
+    # Set production mode if requested
+    if production:
+        import os
+        os.environ["PYTEST_PRODUCTION_MODE"] = "true"
+
     # Print test summary
-    print(f"\n🚀 Running {test_type} tests...")
+    mode_indicator = "🏭 PRODUCTION" if production else "🧪 DEVELOPMENT"
+    print(f"\n🚀 Running {test_type} tests ({mode_indicator} MODE)...")
+
+    if production:
+        print("   🏭 Using production database configuration")
+        print("   ⚠️  Tests will run against production databases")
+    else:
+        print("   🧪 Using test database configuration (SQLite in-memory)")
+
     if test_type == "comprehensive":
         print("   📋 Test Coverage:")
         print("      ✅ Health endpoints (main + location database)")
@@ -210,6 +226,11 @@ def main():
         action="store_true",
         help="Show information about available test types"
     )
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="Run tests against production database (skip test database override)"
+    )
 
     args = parser.parse_args()
 
@@ -223,7 +244,8 @@ def main():
         test_type=args.test_type,
         verbose=args.verbose,
         coverage=args.coverage,
-        quick=args.quick
+        quick=args.quick,
+        production=args.production
     )
     
     if exit_code == 0:

@@ -31,20 +31,37 @@ except ImportError:
         pass
 
 
+def is_production_test_mode() -> bool:
+    """Check if we're running tests in production mode (use production database)"""
+    return "--production" in sys.argv or os.environ.get("PYTEST_PRODUCTION_MODE") == "true"
+
+
 # Only set test environment variables when actually running tests
 if is_running_tests():
-    print("🧪 Test environment detected - configuring SQLite database")
-    os.environ["DB_CLIENT"] = "sqlite"
-    os.environ["DB_HOST"] = ":memory:"
-    os.environ["DB_NAME"] = "test"
-    os.environ["DB_USER"] = "test"
-    os.environ["DB_PASSWORD"] = "test"
+    if is_production_test_mode():
+        print("🏭 Production test mode - using production database configuration")
+        # Don't override database settings, use production configuration
+    else:
+        print("🧪 Test environment detected - configuring SQLite database")
+        os.environ["DB_CLIENT"] = "sqlite"
+        os.environ["DB_HOST"] = ":memory:"
+        os.environ["DB_NAME"] = "test"
+        os.environ["DB_USER"] = "test"
+        os.environ["DB_PASSWORD"] = "test"
+
+        # Configure location database for tests (also SQLite in-memory)
+        os.environ["LOCATION_DB_CLIENT"] = "sqlite"
+        os.environ["LOCATION_DB_HOST"] = ":memory:"
+        os.environ["LOCATION_DB_NAME"] = "test_location"
+        os.environ["LOCATION_DB_USER"] = "test"
+        os.environ["LOCATION_DB_PASSWORD"] = "test"
 else:
     print("⚠️  conftest.py imported outside of test environment")
     warn_if_test_config_leaked()
 
 from app.main import app
 from app.core.database import get_db
+from app.core.location_database import get_location_db
 from app.models.base import Base
 from app.models.user import User
 from app.models.trip import Trip
@@ -73,10 +90,24 @@ def override_get_db():
         db.close()
 
 
+def override_get_location_db():
+    """Override location database dependency for tests"""
+    try:
+        db = TestingSessionLocal()  # Use same test database for location tests
+        yield db
+    finally:
+        db.close()
+
+
 # Only override the database dependency when actually running tests
 if is_running_tests():
-    print("🧪 Overriding database dependency for tests (SQLite in-memory)")
-    app.dependency_overrides[get_db] = override_get_db
+    if is_production_test_mode():
+        print("🏭 Production test mode - using production database dependencies")
+        # Don't override database dependencies, use production databases
+    else:
+        print("🧪 Overriding database dependencies for tests (SQLite in-memory)")
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[get_location_db] = override_get_location_db
 else:
     print("✅ Skipping database override - not in test environment")
     # Ensure no test overrides are accidentally applied
