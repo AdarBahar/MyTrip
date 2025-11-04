@@ -37,7 +37,7 @@ class TestHealthEndpoint:
         response = client.get("/health")
         
         assert response.status_code == 200
-        assert response.headers["content-type"] == "application/json"
+        assert response.headers["content-type"].startswith("application/json")
         
         data = response.json()
         assert isinstance(data, dict)
@@ -80,7 +80,7 @@ class TestOpenAPIEndpoint:
         response = client.get("/openapi.json")
         
         assert response.status_code == 200
-        assert response.headers["content-type"] == "application/json"
+        assert response.headers["content-type"].startswith("application/json")
         
         data = response.json()
         

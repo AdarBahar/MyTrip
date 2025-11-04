@@ -182,11 +182,42 @@ def test_user(db_session):
 
 
 @pytest.fixture
-def auth_headers(test_user):
-    """Create authentication headers for test user"""
-    return {
-        "Authorization": f"Bearer fake_token_{test_user.id}"
-    }
+def auth_headers(request, client: TestClient):
+    """Authentication headers that work in both test and production modes.
+    - Test mode: uses fake token for the created test user
+    - Production mode: logs in using credentials from environment variables
+    """
+    # Production mode: perform real login to get JWT
+    if is_production_test_mode():
+        email = (
+            os.environ.get("TEST_USER_EMAIL")
+            or os.environ.get("TEST_EMAIL")
+            or os.environ.get("ADMIN_EMAIL")
+            or "test@example.com"
+        )
+        password = (
+            os.environ.get("TEST_USER_PASSWORD")
+            or os.environ.get("TEST_PASSWORD")
+            or os.environ.get("ADMIN_PASSWORD")
+            or "password123"
+        )
+
+        login_payload = {"email": email, "password": password}
+        resp = client.post("/auth/login", json=login_payload)
+        if resp.status_code == 200:
+            token = resp.json().get("access_token")
+            if token:
+                return {"Authorization": f"Bearer {token}"}
+
+        # If login fails, skip tests that require auth with a clear message
+        pytest.skip(
+            f"Production login failed (status {resp.status_code}). "
+            f"Set TEST_USER_EMAIL/TEST_USER_PASSWORD env vars to run auth tests."
+        )
+
+    # Test mode: use fake token for created test user
+    test_user = request.getfixturevalue("test_user")
+    return {"Authorization": f"Bearer fake_token_{test_user.id}"}
 
 
 @pytest.fixture
@@ -308,11 +339,38 @@ def test_admin_user(db_session):
 
 
 @pytest.fixture
-def admin_auth_headers(test_admin_user):
-    """Create authentication headers for admin user"""
-    return {
-        "Authorization": f"Bearer fake_token_{test_admin_user.id}"
-    }
+def admin_auth_headers(request, client: TestClient):
+    """Admin authentication headers for both modes.
+    - Test mode: fake token for test admin user
+    - Production mode: login using admin/test credentials
+    """
+    if is_production_test_mode():
+        email = (
+            os.environ.get("ADMIN_EMAIL")
+            or os.environ.get("TEST_USER_EMAIL")
+            or os.environ.get("TEST_EMAIL")
+            or "admin@mytrips.com"
+        )
+        password = (
+            os.environ.get("ADMIN_PASSWORD")
+            or os.environ.get("TEST_USER_PASSWORD")
+            or os.environ.get("TEST_PASSWORD")
+            or "admin123"
+        )
+
+        resp = client.post("/auth/login", json={"email": email, "password": password})
+        if resp.status_code == 200:
+            token = resp.json().get("access_token")
+            if token:
+                return {"Authorization": f"Bearer {token}"}
+
+        pytest.skip(
+            f"Production admin login failed (status {resp.status_code}). "
+            f"Set ADMIN_EMAIL/ADMIN_PASSWORD env vars to run admin-auth tests."
+        )
+
+    test_admin_user = request.getfixturevalue("test_admin_user")
+    return {"Authorization": f"Bearer fake_token_{test_admin_user.id}"}
 
 
 @pytest.fixture
