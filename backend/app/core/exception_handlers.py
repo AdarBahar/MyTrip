@@ -25,6 +25,29 @@ from app.services.error_analytics import get_error_analytics
 
 logger = logging.getLogger(__name__)
 
+# Ensure all error payloads are JSON-serializable (e.g., bytes -> str)
+def _sanitize_for_json(obj):
+    """Recursively convert non‑JSON‑serializable values to safe types."""
+    try:
+        from collections.abc import Mapping
+    except Exception:
+        Mapping = dict  # Fallback
+
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8", errors="replace")
+        except Exception:
+            return repr(obj)
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    if isinstance(obj, Mapping):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_sanitize_for_json(v) for v in obj]
+    # Fallback to string representation
+    return str(obj)
+
+
 
 def generate_request_id() -> str:
     """Generate a unique request ID for tracking"""
@@ -63,11 +86,12 @@ async def validation_exception_handler(
     # Format field-level errors
     field_errors = format_pydantic_errors(exc.errors())
 
-    # Create standardized error
+    # Create standardized error (sanitize errors to avoid bytes in JSON)
+    sanitized_errors = _sanitize_for_json(exc.errors())
     api_error = create_validation_error(
         message="Request validation failed",
         field_errors=field_errors,
-        details={"validation_errors": exc.errors(), "error_count": len(exc.errors())},
+        details={"validation_errors": sanitized_errors, "error_count": len(exc.errors())},
     )
 
     error_response = APIErrorResponse(
@@ -104,7 +128,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             f"HTTP exception [{request_id}]: {exc.status_code} - structured response"
         )
 
-        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        return JSONResponse(status_code=exc.status_code, content=_sanitize_for_json(exc.detail))
 
     # Handle string-based detail messages with standard APIError wrapping
     # Map HTTP status codes to error types
