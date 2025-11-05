@@ -64,16 +64,16 @@ def create_error_response(code: str, message: str, status_code: int = 400, retry
 )
 async def get_suggestions(
     request: Request,
-    q: str = Query(..., min_length=1, max_length=256, description="Search query (minimum 1 character)", example="montef"),
-    session_token: str = Query(..., description="Session token for grouping requests", example="st_abc123"),
-    lat: Optional[float] = Query(None, ge=-90, le=90, description="User latitude for proximity bias", example=32.07),
-    lng: Optional[float] = Query(None, ge=-180, le=180, description="User longitude for proximity bias", example=34.78),
-    radius: Optional[int] = Query(None, ge=1, le=50000, description="Bias radius in meters", example=5000),
-    bbox: Optional[str] = Query(None, description="Bounding box: minLon,minLat,maxLon,maxLat", example="34.7,32.0,34.8,32.1"),
-    countries: Optional[str] = Query(None, description="Comma-separated ISO-3166-1 alpha-2 codes", example="IL,US"),
-    categories: Optional[str] = Query(None, description="Comma-separated category filters", example="hotel,restaurant,museum"),
-    lang: Optional[str] = Query("en", description="BCP-47 language code", example="en"),
-    limit: Optional[int] = Query(8, ge=1, le=20, description="Maximum results (1-20)", example=8),
+    q: str = Query(..., min_length=1, max_length=256, description="Search query (minimum 1 character)", examples={"default": {"value": "montef"}}),
+    session_token: str = Query(..., description="Session token for grouping requests", examples={"default": {"value": "st_abc123"}}),
+    lat: Optional[float] = Query(None, ge=-90, le=90, description="User latitude for proximity bias", examples={"default": {"value": 32.07}}),
+    lng: Optional[float] = Query(None, ge=-180, le=180, description="User longitude for proximity bias", examples={"default": {"value": 34.78}}),
+    radius: Optional[int] = Query(None, ge=1, le=50000, description="Bias radius in meters", examples={"default": {"value": 5000}}),
+    bbox: Optional[str] = Query(None, description="Bounding box: minLon,minLat,maxLon,maxLat", examples={"default": {"value": "34.7,32.0,34.8,32.1"}}),
+    countries: Optional[str] = Query(None, description="Comma-separated ISO-3166-1 alpha-2 codes", examples={"default": {"value": "IL,US"}}),
+    categories: Optional[str] = Query(None, description="Comma-separated category filters", examples={"default": {"value": "hotel,restaurant,museum"}}),
+    lang: Optional[str] = Query("en", description="BCP-47 language code", examples={"default": {"value": "en"}}),
+    limit: Optional[int] = Query(8, ge=1, le=20, description="Maximum results (1-20)", examples={"default": {"value": 8}}),
     current_user = Depends(get_current_user)
 ):
     """
@@ -174,19 +174,19 @@ async def get_suggestions(
 )
 async def search_places(
     request: Request,
-    q: str = Query(..., min_length=1, max_length=256, description="Search query", example="hotel montefiore"),
-    lat: Optional[float] = Query(None, ge=-90, le=90, description="User latitude for proximity bias", example=32.07),
-    lng: Optional[float] = Query(None, ge=-180, le=180, description="User longitude for proximity bias", example=34.78),
-    radius: Optional[int] = Query(None, ge=1, le=50000, description="Bias radius in meters", example=10000),
-    bbox: Optional[str] = Query(None, description="Bounding box: minLon,minLat,maxLon,maxLat", example="34.7,32.0,34.8,32.1"),
-    countries: Optional[str] = Query(None, description="Comma-separated ISO-3166-1 alpha-2 codes", example="IL,US"),
-    categories: Optional[str] = Query(None, description="Comma-separated category filters", example="hotel,restaurant"),
-    lang: Optional[str] = Query("en", description="BCP-47 language code", example="en"),
-    limit: Optional[int] = Query(10, ge=1, le=50, description="Maximum results (1-50)", example=10),
-    page_token: Optional[str] = Query(None, description="Pagination token for next page", example="page_20_1234567890"),
-    offset: Optional[int] = Query(None, ge=0, description="Result offset for pagination", example=0),
-    open_now: Optional[bool] = Query(None, description="Filter for currently open POIs", example=True),
-    sort: Optional[SortOrder] = Query(SortOrder.RELEVANCE, description="Sort order", example="relevance"),
+    q: str = Query(..., min_length=1, max_length=256, description="Search query", examples={"default": {"value": "hotel montefiore"}}),
+    lat: Optional[float] = Query(None, ge=-90, le=90, description="User latitude for proximity bias", examples={"default": {"value": 32.07}}),
+    lng: Optional[float] = Query(None, ge=-180, le=180, description="User longitude for proximity bias", examples={"default": {"value": 34.78}}),
+    radius: Optional[int] = Query(None, ge=1, le=50000, description="Bias radius in meters", examples={"default": {"value": 10000}}),
+    bbox: Optional[str] = Query(None, description="Bounding box: minLon,minLat,maxLon,maxLat", examples={"default": {"value": "34.7,32.0,34.8,32.1"}}),
+    countries: Optional[str] = Query(None, description="Comma-separated ISO-3166-1 alpha-2 codes", examples={"default": {"value": "IL,US"}}),
+    categories: Optional[str] = Query(None, description="Comma-separated category filters", examples={"default": {"value": "hotel,restaurant"}}),
+    lang: Optional[str] = Query("en", description="BCP-47 language code", examples={"default": {"value": "en"}}),
+    limit: Optional[int] = Query(10, ge=1, le=50, description="Maximum results (1-50)", examples={"default": {"value": 10}}),
+    page_token: Optional[str] = Query(None, description="Pagination token for next page", examples={"default": {"value": "page_20_1234567890"}}),
+    offset: Optional[int] = Query(None, ge=0, description="Result offset for pagination", examples={"default": {"value": 0}}),
+    open_now: Optional[bool] = Query(None, description="Filter for currently open POIs", examples={"default": {"value": True}}),
+    sort: Optional[SortOrder] = Query(SortOrder.RELEVANCE, description="Sort order", examples={"default": {"value": "relevance"}}),
     current_user = Depends(get_current_user)
 ):
     """
@@ -298,7 +298,7 @@ async def search_places(
     response_description="Complete place information including contact details, hours, and ratings"
 )
 async def get_place_details(
-    place_id: str = Path(..., description="Unique place identifier", example="poi_hotel_montefiore"),
+    place_id: str = Path(..., description="Unique place identifier", examples={"default": {"value": "poi_hotel_montefiore"}}),
     current_user = Depends(get_current_user)
 ):
     """
