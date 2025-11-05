@@ -386,7 +386,7 @@ async def list_trips(
     ),
     format: Optional[str] = Query(
         "modern",
-        regex="^(legacy|modern|short)$",
+        pattern="^(legacy|modern|short)$",
         description="Response format: 'legacy', 'modern', or 'short'",
     ),
     current_user: User = Depends(get_current_user_jwt),

@@ -103,7 +103,7 @@ async def validation_exception_handler(
     # Log to analytics
     log_error_to_analytics(request, api_error, request_id)
 
-    return JSONResponse(status_code=422, content=error_response.dict())
+    return JSONResponse(status_code=422, content=error_response.model_dump())
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
@@ -164,7 +164,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
     logger.warning(f"HTTP exception [{request_id}]: {exc.status_code} - {exc.detail}")
 
-    return JSONResponse(status_code=exc.status_code, content=error_response.dict())
+    return JSONResponse(status_code=exc.status_code, content=error_response.model_dump())
 
 
 async def integrity_error_handler(
@@ -207,7 +207,7 @@ async def integrity_error_handler(
 
     logger.error(f"Integrity error [{request_id}]: {error_msg}")
 
-    return JSONResponse(status_code=status_code, content=error_response.dict())
+    return JSONResponse(status_code=status_code, content=error_response.model_dump())
 
 
 async def sqlalchemy_error_handler(
@@ -228,7 +228,7 @@ async def sqlalchemy_error_handler(
 
     logger.error(f"Database error [{request_id}]: {exc}")
 
-    return JSONResponse(status_code=500, content=error_response.dict())
+    return JSONResponse(status_code=500, content=error_response.model_dump())
 
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -248,7 +248,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         f"Unexpected error [{request_id}]: {type(exc).__name__}: {exc}", exc_info=True
     )
 
-    return JSONResponse(status_code=500, content=error_response.dict())
+    return JSONResponse(status_code=500, content=error_response.model_dump())
 
 
 # Custom exception classes for business logic
@@ -301,7 +301,7 @@ async def business_rule_violation_handler(
 
     logger.warning(f"Business rule violation [{request_id}]: {exc.message}")
 
-    return JSONResponse(status_code=422, content=error_response.dict())
+    return JSONResponse(status_code=422, content=error_response.model_dump())
 
 
 async def resource_not_found_handler(
@@ -320,7 +320,7 @@ async def resource_not_found_handler(
 
     logger.info(f"Resource not found [{request_id}]: {exc}")
 
-    return JSONResponse(status_code=404, content=error_response.dict())
+    return JSONResponse(status_code=404, content=error_response.model_dump())
 
 
 async def permission_denied_handler(
@@ -337,4 +337,4 @@ async def permission_denied_handler(
 
     logger.warning(f"Permission denied [{request_id}]: {exc.message}")
 
-    return JSONResponse(status_code=403, content=error_response.dict())
+    return JSONResponse(status_code=403, content=error_response.model_dump())

@@ -165,7 +165,7 @@ async def search_places(
     lon: Optional[float] = Query(None, ge=-180, le=180, description="Longitude for proximity search"),
     radius: Optional[int] = Query(50000, ge=1, description="Search radius in meters"),
     limit: int = Query(10, ge=1, le=50, description="Maximum number of results"),
-    format: Optional[str] = Query("modern", regex="^(legacy|modern)$", description="Response format"),
+    format: Optional[str] = Query("modern", pattern="^(legacy|modern)$", description="Response format"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
