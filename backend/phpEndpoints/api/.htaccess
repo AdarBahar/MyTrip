@@ -1,0 +1,161 @@
+# Location API .htaccess Configuration
+# Optimized for production deployment with ModSecurity compatibility
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Security Headers
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options DENY
+Header always set X-XSS-Protection "1; mode=block"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# CORS Headers for API endpoints
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-API-Token, X-Requested-With"
+Header always set Access-Control-Max-Age "86400"
+
+# Handle preflight OPTIONS requests
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+# ModSecurity Rules - Disable specific rules that might block API requests
+<IfModule mod_security.c>
+    # Disable rules that commonly block JSON API requests
+    SecRuleRemoveById 200002
+    SecRuleRemoveById 200003
+    SecRuleRemoveById 973300
+    SecRuleRemoveById 973301
+    SecRuleRemoveById 973302
+    SecRuleRemoveById 973303
+    SecRuleRemoveById 973304
+    SecRuleRemoveById 973305
+    SecRuleRemoveById 973306
+    SecRuleRemoveById 973307
+    SecRuleRemoveById 973308
+    SecRuleRemoveById 973309
+    SecRuleRemoveById 973310
+    SecRuleRemoveById 973311
+    SecRuleRemoveById 973312
+    SecRuleRemoveById 973313
+    SecRuleRemoveById 973314
+    SecRuleRemoveById 973315
+    SecRuleRemoveById 973316
+    SecRuleRemoveById 973317
+    SecRuleRemoveById 973318
+    SecRuleRemoveById 973319
+    SecRuleRemoveById 973320
+    SecRuleRemoveById 973321
+    SecRuleRemoveById 973322
+    SecRuleRemoveById 973323
+    SecRuleRemoveById 973324
+    SecRuleRemoveById 973325
+    SecRuleRemoveById 973326
+    SecRuleRemoveById 973327
+    SecRuleRemoveById 973328
+    SecRuleRemoveById 973329
+    SecRuleRemoveById 973330
+    SecRuleRemoveById 973331
+    SecRuleRemoveById 973332
+    SecRuleRemoveById 973333
+    SecRuleRemoveById 973334
+    SecRuleRemoveById 973335
+    SecRuleRemoveById 973336
+    SecRuleRemoveById 973337
+    SecRuleRemoveById 973338
+    SecRuleRemoveById 973339
+    SecRuleRemoveById 973340
+    SecRuleRemoveById 973341
+    SecRuleRemoveById 973342
+    SecRuleRemoveById 973343
+    SecRuleRemoveById 973344
+    SecRuleRemoveById 973345
+    SecRuleRemoveById 973346
+    SecRuleRemoveById 973347
+    SecRuleRemoveById 973348
+    SecRuleRemoveById 973349
+    SecRuleRemoveById 973350
+    
+    # Allow JSON content type
+    SecRuleRemoveByMsg "Content-Type charset not allowed by policy"
+    SecRuleRemoveByMsg "Request content type is not allowed by policy"
+    
+    # Allow API endpoints
+    <LocationMatch "/(getloc|driving|batch-sync|health)\.php$">
+        SecRuleEngine Off
+    </LocationMatch>
+</IfModule>
+
+# PHP Configuration
+<IfModule mod_php.c>
+    php_value max_execution_time 60
+    php_value max_input_time 60
+    php_value memory_limit 128M
+    php_value post_max_size 10M
+    php_value upload_max_filesize 10M
+    php_value max_input_vars 3000
+    php_flag display_errors Off
+    php_flag log_errors On
+    php_value error_log "../logs/php_errors.log"
+</IfModule>
+
+# Deny access to sensitive files (excluding documentation JSON files)
+<FilesMatch "\.(env|log|backup)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Deny access to sensitive JSON files (but allow docs)
+<FilesMatch "^(api-tokens|config|rate_limits|token-users)\.json$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Allow documentation JSON files
+<FilesMatch "^(openapi|postman-collection)\.json$">
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+
+# Deny access to backup files
+<FilesMatch "\.backup$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Cache control for API responses
+<FilesMatch "\.(php)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+</FilesMatch>
+
+# Compress responses (but NOT for SSE streams)
+<IfModule mod_deflate.c>
+    # Disable compression for Server-Sent Events (SSE)
+    SetEnvIfNoCase Request_URI "stream-sse\.php$" no-gzip=1
+    SetEnvIfNoCase Request_URI "stream-sse\.php$" dont-vary=1
+
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+
+    # Explicitly exclude text/event-stream from compression
+    SetEnvIfNoCase Content-Type "text/event-stream" no-gzip=1
+</IfModule>
+
+# Error pages
+ErrorDocument 400 /location/api/error.php?code=400
+ErrorDocument 401 /location/api/error.php?code=401
+ErrorDocument 403 /location/api/error.php?code=403
+ErrorDocument 404 /location/api/error.php?code=404
+ErrorDocument 405 /location/api/error.php?code=405
+ErrorDocument 500 /location/api/error.php?code=500
