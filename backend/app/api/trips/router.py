@@ -6,7 +6,7 @@ import re
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.auth_jwt import get_current_user_jwt
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 @router.post(
     "/",
-    response_model=TripCreateResponse,
+    response_model=TripSchema,
     status_code=201,
     summary="Create new trip with enhanced validation",
     description="""
@@ -261,7 +261,7 @@ async def create_trip(
                 "planning_timeline"
             ] = "Trip is coming up soon - finalize your route and check weather"
 
-    return TripCreateResponse(trip=trip, next_steps=next_steps, suggestions=suggestions)
+    return trip
 
 
 @router.get(
@@ -385,7 +385,7 @@ async def list_trips(
         description="Sort by field:direction (created_at:desc, updated_at:desc, title:asc, start_date:desc)",
     ),
     format: Optional[str] = Query(
-        "modern",
+        "legacy",
         pattern="^(legacy|modern|short)$",
         description="Response format: 'legacy', 'modern', or 'short'",
     ),
@@ -630,7 +630,7 @@ async def get_trip(
     trip = (
         db.query(Trip)
         .options(joinedload(Trip.created_by_user))
-        .filter(Trip.id == trip_id, Trip.deleted_at.is_(None))
+        .filter(or_(Trip.id == trip_id, Trip.slug == trip_id), Trip.deleted_at.is_(None))
         .first()
     )
 
@@ -663,7 +663,7 @@ async def update_trip(
     trip = (
         db.query(Trip)
         .options(joinedload(Trip.created_by_user))
-        .filter(Trip.id == trip_id, Trip.deleted_at.is_(None))
+        .filter(or_(Trip.id == trip_id, Trip.slug == trip_id), Trip.deleted_at.is_(None))
         .first()
     )
 
@@ -680,6 +680,14 @@ async def update_trip(
 
     # Update fields
     update_data = trip_data.model_dump(exclude_unset=True)
+    # Ensure start_date is a Python date for DB (avoid serialized string)
+    if "start_date" in update_data and isinstance(update_data["start_date"], str):
+        from datetime import date as _date
+        try:
+            update_data["start_date"] = _date.fromisoformat(update_data["start_date"])
+        except ValueError:
+            pass
+
     for field, value in update_data.items():
         setattr(trip, field, value)
 
@@ -687,6 +695,17 @@ async def update_trip(
     db.refresh(trip)
 
     return trip
+
+
+@router.put("/{trip_id}", response_model=TripSchema)
+async def replace_trip(
+    trip_id: str,
+    trip_data: TripUpdate,
+    current_user: User = Depends(get_current_user_jwt),
+    db: Session = Depends(get_db),
+):
+    """Full update (PUT) is treated the same as PATCH for compatibility."""
+    return await update_trip(trip_id, trip_data, current_user, db)
 
 
 @router.post("/{trip_id}/archive", response_model=TripSchema)
@@ -721,7 +740,7 @@ async def publish_trip(trip_id: str, db: Session = Depends(get_db)):
     return trip
 
 
-@router.delete("/{trip_id}", status_code=204)
+@router.delete("/{trip_id}", status_code=200)
 async def delete_trip(
     trip_id: str,
     current_user: User = Depends(get_current_user_jwt),
@@ -740,7 +759,7 @@ async def delete_trip(
     trip = (
         db.query(Trip)
         .filter(
-            Trip.id == trip_id,
+            or_(Trip.id == trip_id, Trip.slug == trip_id),
             Trip.created_by == current_user.id,
             Trip.deleted_at.is_(None),
         )
@@ -758,8 +777,8 @@ async def delete_trip(
     trip.deleted_at = datetime.utcnow()
     db.commit()
 
-    # Return 204 No Content (no response body)
-    return
+    # Return confirmation payload
+    return {"message": "Trip deleted"}
 
 
 # Bulk Operations Endpoints

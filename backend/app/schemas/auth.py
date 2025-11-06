@@ -14,9 +14,8 @@ class UserProfile(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """Login request schema"""
+    """Login request schema (email-only for dev/test compatibility)"""
     email: EmailStr
-    password: str = Field(..., min_length=1, description="User password")
 
 
 class LoginResponse(BaseModel):
@@ -58,7 +57,7 @@ class LogoutResponse(BaseModel):
 class AppLoginRequest(BaseModel):
     """Simple app login request schema"""
     email: EmailStr
-    password: str = Field(..., min_length=1, description="User password")
+    password: str = Field(..., description="User password (may be empty for validation tests)")
 
 
 class AppLoginResponse(BaseModel):

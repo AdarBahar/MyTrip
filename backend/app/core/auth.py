@@ -21,7 +21,7 @@ async def get_token_from_header(authorization: str = Header(None)) -> str:
 
     try:
         scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
+        if scheme != "Bearer":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication scheme",
@@ -90,7 +90,7 @@ async def get_current_user_optional(
 
     try:
         scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
+        if scheme != "Bearer":
             return None
 
         # Handle both fake tokens and JWT
