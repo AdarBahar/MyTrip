@@ -2,6 +2,7 @@
 Location database configuration and session management
 Separate database for location-related endpoints
 """
+import os
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
@@ -37,8 +38,11 @@ def _get_location_engine():
                 },
             )
     except Exception as e:
-        # Fallback to SQLite in-memory for tests if configuration fails
         print(f"⚠️  Location database configuration failed: {e}")
+        # In production or production test mode, fail fast to avoid silent SQLite fallback
+        prod_mode = os.environ.get("PYTEST_PRODUCTION_MODE") == "true" or (getattr(settings, "APP_ENV", "").lower() == "production")
+        if prod_mode:
+            raise
         print("🧪 Falling back to SQLite in-memory for tests")
         return create_engine(
             "sqlite:///:memory:",
