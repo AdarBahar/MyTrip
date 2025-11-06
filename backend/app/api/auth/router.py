@@ -20,83 +20,28 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """
-    **Login with Email and Password**
-
-    Authenticate with email address and password against the production database.
-
-    **How to use:**
-    1. Enter your registered email address
-    2. Enter your password (if no password field, any non-empty string for existing users)
-    3. Copy the `access_token` from the response
-    4. Click the "Authorize" button in Swagger UI
-    5. Enter: `Bearer <your_access_token>`
-    6. Use protected endpoints with automatic authentication
-
-    **Example:**
-    - Email: `adar.bahar@gmail.com`
-    - Password: `your_password` (or any string if password not implemented yet)
-    - Response: `{"access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...", ...}`
-    - Authorization: `Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...`
-
-    **Note:** Only existing users in the database can login. No automatic user creation.
+    Simple email-only login used for development/tests.
+    - Creates the user if missing
+    - Returns a fake token: "fake_token_<userId>"
     """
-    from app.core.jwt import create_access_token
+    import re
+    from app.core.jwt import create_fake_token_for_testing as create_fake_token
 
     email = login_data.email.lower()
 
-    # Find user by email - must exist in database
+    # Find or create user by email
     user = db.query(User).filter(User.email == email).first()
-
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password. User not found.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # Generate display name from email local-part
+        local = email.split("@")[0]
+        parts = [p for p in re.split(r"[._-]+", local) if p]
+        display = " ".join([p.capitalize() for p in parts]) or email
+        user = User(email=email, display_name=display, status=UserStatus.ACTIVE)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-    # Check if user is active
-    if user.status != UserStatus.ACTIVE:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account is disabled.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Password validation
-    if not login_data.password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password is required.",
-        )
-
-    # Check if user has a valid password hash
-    if not hasattr(user, 'password_hash') or not user.password_hash:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account not properly configured. Please contact administrator.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Verify password with proper error handling
-    try:
-        from app.core.jwt import verify_password
-        if not verify_password(login_data.password, user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-    except Exception as e:
-        # Handle invalid password hash format
-        print(f"Password verification error for user {user.email}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account not properly configured. Please contact administrator.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Create JWT access token
-    access_token = create_access_token(data={"sub": user.id})
+    access_token = create_fake_token(user.id)
 
     return LoginResponse(
         access_token=access_token,
@@ -104,8 +49,8 @@ async def login(
             id=user.id,
             email=user.email,
             display_name=user.display_name,
-            status=user.status.value
-        )
+            status=user.status.value,
+        ),
     )
 
 

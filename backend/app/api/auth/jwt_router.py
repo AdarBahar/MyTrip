@@ -16,9 +16,9 @@ from app.core.jwt import (
 )
 from app.models.user import User
 from app.schemas.auth import (
-    LoginRequest, 
-    LoginResponse, 
-    RefreshRequest, 
+    AppLoginRequest,
+    LoginResponse,
+    RefreshRequest,
     RefreshResponse,
     LogoutResponse,
     UserProfile
@@ -28,7 +28,7 @@ router = APIRouter()
 
 @router.post("/jwt/login", response_model=LoginResponse)
 async def jwt_login(
-    login_data: LoginRequest,
+    login_data: AppLoginRequest,
     db: Session = Depends(get_db)
 ):
     """
@@ -72,7 +72,7 @@ async def jwt_login(
             id=user.id,
             email=user.email,
             display_name=user.display_name,
-            status=user.status
+            status=user.status.value
         )
     )
 
