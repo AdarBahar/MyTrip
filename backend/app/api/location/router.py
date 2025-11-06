@@ -178,7 +178,7 @@ async def post_getloc(
     if payload.timestamp is not None:
         try:
             client_dt = datetime.fromtimestamp(payload.timestamp / 1000.0, tz=timezone.utc)
-            client_time_iso = client_dt.isoformat().replace("+00:00", "Z")
+            client_time_iso = client_dt.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             client_time_iso = None
 
@@ -261,7 +261,7 @@ async def post_driving(
     record = DrivingRecord(
         user_id=user.id,
         device_id=payload.id,
-        event_type=payload.event,  # normalized to start|data|stop
+        event_type=("driving_" + payload.event if payload.event in {"start", "data", "stop"} else payload.event),  # store DB-compatible form
         client_time=payload.timestamp,
         latitude=payload.location.latitude,
         longitude=payload.location.longitude,
@@ -359,7 +359,7 @@ async def post_batch_sync(
                 client_time_iso = None
                 try:
                     client_dt = datetime.fromtimestamp(ts / 1000.0, tz=timezone.utc)
-                    client_time_iso = client_dt.isoformat().replace("+00:00", "Z")
+                    client_time_iso = client_dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     client_time_iso = None
 
@@ -405,7 +405,7 @@ async def post_batch_sync(
                 drv_record = DrivingRecord(
                     user_id=user.id,
                     device_id=payload.device_id,
-                    event_type=event_short,
+                    event_type=("driving_" + event_short if event_short in {"start", "data", "stop"} else event_short),
                     client_time=ts,
                     latitude=lat,
                     longitude=lon,
@@ -638,7 +638,7 @@ async def get_driving_records_query(
     if dt_to:
         q = q.filter(DrivingRecord.server_time <= dt_to)
     if event_type:
-        q = q.filter(DrivingRecord.event_type == event_type)
+        q = q.filter(DrivingRecord.event_type.in_([event_type, f"driving_{event_type}"]))
     if trip_id:
         q = q.filter(DrivingRecord.trip_id == trip_id)
 
@@ -655,7 +655,7 @@ async def get_driving_records_query(
             "username": usr.username,
             "display_name": usr.display_name,
             "device_id": dr.device_id,
-            "event_type": dr.event_type,
+            "event_type": (dr.event_type[8:] if isinstance(dr.event_type, str) and dr.event_type.startswith("driving_") else dr.event_type),
             "server_time": dr.server_time.isoformat() if dr.server_time else None,
             "client_time": dr.client_time,
             "latitude": lat_val,
