@@ -1,0 +1,2159 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Location Tracking API",
+        "description": "Comprehensive API for location and driving data collection with offline synchronization support. Provides real-time location tracking, driving event management, and batch data upload capabilities.\n\n## Recent Updates\n\n### v2.1.1 (2025-10-30) - SSE Endpoint Location Fix\n- **MOVED:** SSE streaming endpoint from `/api/live/stream-sse.php` to `/stream-sse.php` (root level)\n- **REASON:** nginx location-specific buffering for `/api/live/` was preventing SSE events from streaming\n- **NOTE:** Session endpoint remains at `/api/live/session.php`\n\n### v2.1.0 (2025-10-29) - Enhanced Real-Time Streaming\n- **NEW:** Server-Sent Events (SSE) streaming endpoint for push-based real-time updates\n- **NEW:** JWT session management (`/live/session`) for secure streaming connections\n- **NEW:** Change detection reduces bandwidth by ~70% (only sends significant changes)\n- **NEW:** Duplicate and stale data detection prevents reprocessing\n- **NEW:** Dwell/drive segmentation in history endpoint with route simplification\n- **NEW:** Location analytics with automatic movement pattern detection\n- **Enhanced:** `/getloc.php` now includes duplicate/stale detection\n- **Enhanced:** `/live/history.php` now supports `segments=true` for analytics\n\n### v2.0.1 (2025-10-28)\n- **Fixed:** Real-time tracking tables (`device_last_position`, `location_history_cache`) now update correctly\n- **Fixed:** Removed `network_type` and `provider` columns from real-time tracking to match production schema\n- **Improved:** Live tracking endpoints (`/live/latest.php`, `/live/history.php`) now return data immediately after location submission\n\n### v2.0.0\n- Added real-time location tracking endpoints\n- Added batch synchronization support for offline data\n- Added driving event management\n- Added comprehensive anomaly detection",
+        "version": "2.1.1",
+        "contact": {
+            "name": "API Support",
+            "email": "support@bahar.co.il"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        }
+    },
+    "servers": [
+        {
+            "url": "https://www.bahar.co.il/location/api",
+            "description": "Production server"
+        },
+        {
+            "url": "https://staging.bahar.co.il/location/api",
+            "description": "Staging server"
+        }
+    ],
+    "security": [
+        {
+            "XAuthToken": []
+        },
+        {
+            "BearerAuth": []
+        },
+        {
+            "ApiKeyAuth": []
+        }
+    ],
+    "paths": {
+        "/": {
+            "get": {
+                "tags": ["System"],
+                "summary": "API Information",
+                "description": "Get API status, available endpoints, and system information",
+                "operationId": "getApiInfo",
+                "responses": {
+                    "200": {
+                        "description": "API information retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiInfo"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/getloc.php": {
+            "post": {
+                "tags": ["Location"],
+                "summary": "Submit location data",
+                "description": "Submit individual location data points in real-time with automatic anomaly detection",
+                "operationId": "submitLocation",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LocationData"
+                            },
+                            "examples": {
+                                "basic": {
+                                    "$ref": "#/components/examples/BasicLocation"
+                                },
+                                "detailed": {
+                                    "$ref": "#/components/examples/DetailedLocation"
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Location data received successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LocationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationError"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/RateLimitExceeded"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/driving.php": {
+            "post": {
+                "tags": ["Driving"],
+                "summary": "Submit driving event data",
+                "description": "Track driving sessions and trip data with start/data/stop events",
+                "operationId": "submitDrivingEvent",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DrivingEvent"
+                            },
+                            "examples": {
+                                "start": {
+                                    "$ref": "#/components/examples/DrivingStart"
+                                },
+                                "data": {
+                                    "$ref": "#/components/examples/DrivingData"
+                                },
+                                "stop": {
+                                    "$ref": "#/components/examples/DrivingStop"
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Driving event processed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DrivingResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationError"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/batch-sync.php": {
+            "post": {
+                "tags": ["Batch Sync"],
+                "summary": "Batch synchronization for offline data",
+                "description": "Upload multiple location and driving records collected while offline",
+                "operationId": "batchSync",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BatchSyncRequest"
+                            },
+                            "examples": {
+                                "single_part": {
+                                    "$ref": "#/components/examples/BatchSyncSingle"
+                                },
+                                "multi_part": {
+                                    "$ref": "#/components/examples/BatchSyncMulti"
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Batch sync processed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BatchSyncResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationError"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/users.php": {
+            "get": {
+                "tags": ["Data Retrieval"],
+                "summary": "Get users with location data",
+                "description": "Retrieve list of users who have submitted location data, with optional counts and metadata",
+                "operationId": "getUsers",
+                "parameters": [
+                    {
+                        "name": "with_location_data",
+                        "in": "query",
+                        "description": "Only return users with location records",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    },
+                    {
+                        "name": "include_counts",
+                        "in": "query",
+                        "description": "Include location and driving record counts",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "include_metadata",
+                        "in": "query",
+                        "description": "Include last location and driving times",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Users retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UsersResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/RateLimitExceeded"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/locations.php": {
+            "get": {
+                "tags": ["Data Retrieval"],
+                "summary": "Get location records with filters",
+                "description": "Retrieve location records with comprehensive filtering options including user, date range, accuracy, anomaly status, and geographic radius",
+                "operationId": "getLocations",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "query",
+                        "description": "Filter by username",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "date_from",
+                        "in": "query",
+                        "description": "Start date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "name": "date_to",
+                        "in": "query",
+                        "description": "End date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "name": "accuracy_max",
+                        "in": "query",
+                        "description": "Maximum accuracy in meters",
+                        "required": false,
+                        "schema": {
+                            "type": "number",
+                            "format": "float"
+                        }
+                    },
+                    {
+                        "name": "anomaly_status",
+                        "in": "query",
+                        "description": "Filter by anomaly status",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": ["marked", "suspected", "normal", "confirmed"]
+                        }
+                    },
+                    {
+                        "name": "lat",
+                        "in": "query",
+                        "description": "Latitude for geographic radius search",
+                        "required": false,
+                        "schema": {
+                            "type": "number",
+                            "format": "float"
+                        }
+                    },
+                    {
+                        "name": "lng",
+                        "in": "query",
+                        "description": "Longitude for geographic radius search",
+                        "required": false,
+                        "schema": {
+                            "type": "number",
+                            "format": "float"
+                        }
+                    },
+                    {
+                        "name": "radius",
+                        "in": "query",
+                        "description": "Radius in meters for geographic search (default: 100)",
+                        "required": false,
+                        "schema": {
+                            "type": "number",
+                            "format": "float",
+                            "default": 100
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Maximum records to return (default: 1000, max: 10000)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 1000,
+                            "maximum": 10000
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "description": "Pagination offset (default: 0)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        }
+                    },
+                    {
+                        "name": "include_anomaly_status",
+                        "in": "query",
+                        "description": "Include anomaly status information",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Location records retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LocationsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/RateLimitExceeded"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/driving-records.php": {
+            "get": {
+                "tags": ["Data Retrieval"],
+                "summary": "Get driving records with filters",
+                "description": "Retrieve driving records with filtering options including user, date range, event type, and trip ID",
+                "operationId": "getDrivingRecords",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "query",
+                        "description": "Filter by username",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "date_from",
+                        "in": "query",
+                        "description": "Start date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "name": "date_to",
+                        "in": "query",
+                        "description": "End date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "name": "event_type",
+                        "in": "query",
+                        "description": "Filter by event type",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": ["start", "data", "stop"]
+                        }
+                    },
+                    {
+                        "name": "trip_id",
+                        "in": "query",
+                        "description": "Filter by specific trip ID",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Maximum records to return (default: 1000, max: 10000)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 1000,
+                            "maximum": 10000
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "description": "Pagination offset (default: 0)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Driving records retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DrivingRecordsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/RateLimitExceeded"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/live/latest.php": {
+            "get": {
+                "tags": ["Live Tracking"],
+                "summary": "Get latest locations for user(s)",
+                "description": "Returns the most recent location for specified user(s) or device(s). Perfect for 'where is everyone now' dashboards.",
+                "operationId": "getLiveLatest",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "query",
+                        "description": "Single username or comma-separated list of usernames",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "john_doe,jane_smith"
+                    },
+                    {
+                        "name": "device",
+                        "in": "query",
+                        "description": "Single device ID or comma-separated list of device IDs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "device-12345"
+                    },
+                    {
+                        "name": "all",
+                        "in": "query",
+                        "description": "Get latest for all active users",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "max_age",
+                        "in": "query",
+                        "description": "Maximum age in seconds (default: 3600 = 1 hour)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 3600
+                        }
+                    },
+                    {
+                        "name": "include_inactive",
+                        "in": "query",
+                        "description": "Include users with no recent location",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Latest locations retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LiveLatestResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/live/stream.php": {
+            "get": {
+                "tags": ["Live Tracking"],
+                "summary": "Real-time location streaming (polling)",
+                "description": "Returns new location updates since a cursor timestamp. Designed for efficient polling (every 3-5 seconds) to build real-time tracking dashboards.",
+                "operationId": "getLiveStream",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "query",
+                        "description": "Single username or comma-separated list of usernames",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "john_doe,jane_smith"
+                    },
+                    {
+                        "name": "device",
+                        "in": "query",
+                        "description": "Single device ID or comma-separated list of device IDs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "all",
+                        "in": "query",
+                        "description": "Stream all users",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "description": "Cursor timestamp in milliseconds (0 for initial request)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        },
+                        "example": 1729950600000
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Maximum number of records to return (max: 500)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 100,
+                            "maximum": 500
+                        }
+                    },
+                    {
+                        "name": "session_id",
+                        "in": "query",
+                        "description": "Optional session tracking ID",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Location stream retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LiveStreamResponse"
+                                }
+                            }
+                        }
+                    },
+                    "304": {
+                        "description": "Not Modified - No new data since last request (ETag match)"
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/live/history.php": {
+            "get": {
+                "tags": ["Live Tracking"],
+                "summary": "Get recent tracking history with analytics",
+                "description": "Returns recent tracking history from the cache table. Optionally includes dwell/drive segmentation and route simplification for movement pattern analysis. Useful for replay functionality or showing recent path (max 24 hours).",
+                "operationId": "getLiveHistory",
+                "parameters": [
+                    {
+                        "name": "user",
+                        "in": "query",
+                        "description": "Single username or comma-separated list of usernames",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "john_doe"
+                    },
+                    {
+                        "name": "device",
+                        "in": "query",
+                        "description": "Single device ID or comma-separated list of device IDs",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "all",
+                        "in": "query",
+                        "description": "Get history for all users",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "duration",
+                        "in": "query",
+                        "description": "Time window in seconds (default: 3600 = 1 hour, max: 86400 = 24 hours)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 3600,
+                            "maximum": 86400
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Maximum number of records to return (max: 5000)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 500,
+                            "maximum": 5000
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "description": "Pagination offset",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        }
+                    },
+                    {
+                        "name": "segments",
+                        "in": "query",
+                        "description": "Include dwell/drive segment analysis (NEW in v2.1.0)",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "example": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Tracking history retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LiveHistoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/live/session": {
+            "post": {
+                "tags": ["Enhanced Streaming"],
+                "summary": "Create streaming session",
+                "description": "Creates a JWT-based session token for secure Server-Sent Events (SSE) streaming. The token is used to authenticate the SSE connection and control which devices to stream.",
+                "operationId": "createStreamingSession",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "device_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "description": "Array of device IDs to stream. Empty array = all devices for this user.",
+                                        "example": ["device_123", "device_456"]
+                                    },
+                                    "duration": {
+                                        "type": "integer",
+                                        "description": "Session duration in seconds (default: 3600 = 1 hour, max: 86400 = 24 hours)",
+                                        "default": 3600,
+                                        "maximum": 86400,
+                                        "example": 3600
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Session created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "session_id": {
+                                                    "type": "string",
+                                                    "example": "sess_abc123def456"
+                                                },
+                                                "session_token": {
+                                                    "type": "string",
+                                                    "description": "JWT token for SSE authentication",
+                                                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                                },
+                                                "expires_at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "example": "2025-10-29T17:00:00Z"
+                                                },
+                                                "duration": {
+                                                    "type": "integer",
+                                                    "example": 3600
+                                                },
+                                                "stream_url": {
+                                                    "type": "string",
+                                                    "example": "/stream-sse.php?token=eyJhbGc..."
+                                                },
+                                                "device_ids": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    },
+                                                    "example": ["device_123"]
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/BadRequest"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/live/session/{session_id}": {
+            "delete": {
+                "tags": ["Enhanced Streaming"],
+                "summary": "Revoke streaming session",
+                "description": "Revokes an active streaming session, immediately closing any SSE connections using this session token.",
+                "operationId": "revokeStreamingSession",
+                "parameters": [
+                    {
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Session ID to revoke",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "sess_abc123def456"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session revoked successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "session_id": {
+                                                    "type": "string",
+                                                    "example": "sess_abc123def456"
+                                                },
+                                                "revoked": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthorized"
+                    },
+                    "404": {
+                        "description": "Session not found"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                }
+            }
+        },
+        "/stream-sse.php": {
+            "get": {
+                "tags": ["Enhanced Streaming"],
+                "summary": "Server-Sent Events (SSE) streaming",
+                "description": "Establishes a Server-Sent Events connection for push-based real-time location updates. Only sends updates when significant changes are detected (distance >20m, time >5min, speed change >5km/h, or bearing change >15°). Requires JWT token from /live/session endpoint.\n\n**Event Types:**\n- `connected` - Initial connection established\n- `loc` - Location update (significant change detected)\n- `no_change` - Heartbeat (every 30 seconds)\n- `bye` - Connection closing\n- `error` - Error occurred\n\n**Change Detection:**\nReduces bandwidth by ~70% by only sending significant changes based on:\n- Distance threshold: 20 meters\n- Time threshold: 5 minutes\n- Speed threshold: 5 km/h\n- Bearing threshold: 15 degrees",
+                "operationId": "streamSSE",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "query",
+                        "required": true,
+                        "description": "JWT session token from /live/session endpoint",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream established. Events will be sent as text/event-stream.",
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "description": "Server-Sent Events stream with multiple event types",
+                                    "example": "event: connected\ndata: {\"session_id\":\"sess_123\",\"user_id\":1,\"device_ids\":[\"device_123\"]}\n\nevent: loc\ndata: {\"device_id\":\"device_123\",\"latitude\":32.0853,\"longitude\":34.7818,\"speed\":45.5,\"change_reason\":\"distance\",\"change_metrics\":{\"distance_meters\":25.3}}\n\nevent: no_change\ndata: {\"active_devices\":3,\"timestamp\":\"2025-10-29T10:30:00Z\"}\n\n"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid or expired token"
+                    },
+                    "500": {
+                        "$ref": "#/components/responses/ServerError"
+                    }
+                },
+                "security": []
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "XAuthToken": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Auth-Token",
+                "description": "Bearer token in X-Auth-Token header (recommended for production - bypasses ModSecurity)"
+            },
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "JWT token or API key in Authorization header (may be blocked by firewalls)"
+            },
+            "ApiKeyAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-API-Token",
+                "description": "API key in custom header (legacy support)"
+            }
+        },
+        "schemas": {
+            "LocationData": {
+                "type": "object",
+                "required": ["id", "name", "latitude", "longitude"],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "description": "Unique device identifier",
+                        "example": "device-12345"
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "description": "User name",
+                        "example": "john_doe"
+                    },
+                    "latitude": {
+                        "type": "number",
+                        "minimum": -90,
+                        "maximum": 90,
+                        "description": "Latitude coordinate in decimal degrees",
+                        "example": 32.0853
+                    },
+                    "longitude": {
+                        "type": "number",
+                        "minimum": -180,
+                        "maximum": 180,
+                        "description": "Longitude coordinate in decimal degrees",
+                        "example": 34.7818
+                    },
+                    "accuracy": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "GPS accuracy in meters",
+                        "example": 5.0
+                    },
+                    "timestamp": {
+                        "type": "integer",
+                        "description": "Unix timestamp in milliseconds",
+                        "example": 1726588200000
+                    },
+                    "altitude": {
+                        "type": "number",
+                        "description": "Altitude in meters above sea level",
+                        "example": 100.5
+                    },
+                    "speed": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Speed in meters per second",
+                        "example": 25.3
+                    },
+                    "bearing": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 360,
+                        "description": "Direction in degrees (0-360, 0=North)",
+                        "example": 180.0
+                    },
+                    "battery_level": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "Battery level percentage",
+                        "example": 85
+                    },
+                    "network_type": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "description": "Network type (WiFi, 4G, 5G, etc.)",
+                        "example": "4G"
+                    },
+                    "provider": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "description": "Location provider (GPS, Network, Passive)",
+                        "example": "GPS"
+                    }
+                }
+            },
+            "LocationResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["success"],
+                        "example": "success"
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Location received"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2024-09-21T10:30:00Z"
+                    },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "example": "device-12345"
+                            },
+                            "name": {
+                                "type": "string",
+                                "example": "john_doe"
+                            },
+                            "storage_mode": {
+                                "type": "string",
+                                "enum": ["database", "file"],
+                                "example": "database"
+                            },
+                            "record_id": {
+                                "type": "integer",
+                                "description": "Database record ID (database mode only)",
+                                "example": 12345
+                            },
+                            "request_id": {
+                                "type": "string",
+                                "example": "loc_64f1a2b3c4d5e"
+                            }
+                        }
+                    }
+                }
+            },
+            "DrivingEvent": {
+                "type": "object",
+                "required": ["id", "name", "event", "timestamp", "location"],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "description": "Unique device identifier",
+                        "example": "device-12345"
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "description": "User name",
+                        "example": "john_doe"
+                    },
+                    "event": {
+                        "type": "string",
+                        "enum": ["start", "data", "stop"],
+                        "description": "Driving event type",
+                        "example": "start"
+                    },
+                    "timestamp": {
+                        "type": "integer",
+                        "description": "Unix timestamp in milliseconds",
+                        "example": 1726588200000
+                    },
+                    "location": {
+                        "type": "object",
+                        "required": ["latitude", "longitude"],
+                        "properties": {
+                            "latitude": {
+                                "type": "number",
+                                "minimum": -90,
+                                "maximum": 90,
+                                "example": 32.0853
+                            },
+                            "longitude": {
+                                "type": "number",
+                                "minimum": -180,
+                                "maximum": 180,
+                                "example": 34.7818
+                            },
+                            "accuracy": {
+                                "type": "number",
+                                "minimum": 0,
+                                "example": 5.0
+                            },
+                            "altitude": {
+                                "type": "number",
+                                "example": 100.5
+                            }
+                        }
+                    },
+                    "speed": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Speed in meters per second",
+                        "example": 16.67
+                    },
+                    "bearing": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 360,
+                        "description": "Direction in degrees",
+                        "example": 90.0
+                    },
+                    "trip_summary": {
+                        "type": "object",
+                        "description": "Trip summary data (for stop events)",
+                        "properties": {
+                            "distance": {
+                                "type": "number",
+                                "description": "Total distance in meters",
+                                "example": 15420.5
+                            },
+                            "duration": {
+                                "type": "integer",
+                                "description": "Trip duration in seconds",
+                                "example": 1800
+                            },
+                            "max_speed": {
+                                "type": "number",
+                                "description": "Maximum speed in m/s",
+                                "example": 27.78
+                            },
+                            "avg_speed": {
+                                "type": "number",
+                                "description": "Average speed in m/s",
+                                "example": 8.57
+                            }
+                        }
+                    }
+                }
+            },
+            "DrivingResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["success"],
+                        "example": "success"
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Driving trip started"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2024-09-21T10:30:00Z"
+                    },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "example": "device-12345"
+                            },
+                            "name": {
+                                "type": "string",
+                                "example": "john_doe"
+                            },
+                            "event_type": {
+                                "type": "string",
+                                "example": "start"
+                            },
+                            "trip_id": {
+                                "type": "string",
+                                "example": "device-12345_1726588200"
+                            },
+                            "storage_mode": {
+                                "type": "string",
+                                "enum": ["database", "file"],
+                                "example": "database"
+                            },
+                            "request_id": {
+                                "type": "string",
+                                "example": "drv_64f1a2b3c4d5e"
+                            }
+                        }
+                    }
+                }
+            },
+            "BatchSyncRequest": {
+                "type": "object",
+                "required": ["sync_id", "part", "total_parts", "device_id", "user_name", "records"],
+                "properties": {
+                    "sync_id": {
+                        "type": "string",
+                        "description": "Unique sync session identifier",
+                        "example": "sync_64f1a2b3c4d5e"
+                    },
+                    "part": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Current part number",
+                        "example": 1
+                    },
+                    "total_parts": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Total number of parts",
+                        "example": 3
+                    },
+                    "device_id": {
+                        "type": "string",
+                        "description": "Device identifier",
+                        "example": "device-12345"
+                    },
+                    "user_name": {
+                        "type": "string",
+                        "description": "User name",
+                        "example": "john_doe"
+                    },
+                    "records": {
+                        "type": "array",
+                        "description": "Array of location and driving records",
+                        "items": {
+                            "type": "object",
+                            "required": ["type", "timestamp"],
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["location", "driving"],
+                                    "example": "location"
+                                },
+                                "timestamp": {
+                                    "type": "integer",
+                                    "example": 1726588200000
+                                },
+                                "latitude": {
+                                    "type": "number",
+                                    "example": 32.0853
+                                },
+                                "longitude": {
+                                    "type": "number",
+                                    "example": 34.7818
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "BatchSyncResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["success"],
+                        "example": "success"
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Batch part received"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2024-09-21T10:30:00Z"
+                    },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "sync_id": {
+                                "type": "string",
+                                "example": "sync_64f1a2b3c4d5e"
+                            },
+                            "part_received": {
+                                "type": "integer",
+                                "example": 1
+                            },
+                            "total_parts": {
+                                "type": "integer",
+                                "example": 3
+                            },
+                            "sync_complete": {
+                                "type": "boolean",
+                                "example": false
+                            },
+                            "records_processed": {
+                                "type": "integer",
+                                "example": 150
+                            }
+                        }
+                    }
+                }
+            },
+            "UsersResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "integer",
+                                    "example": 1
+                                },
+                                "username": {
+                                    "type": "string",
+                                    "example": "john_doe"
+                                },
+                                "display_name": {
+                                    "type": "string",
+                                    "example": "John Doe"
+                                },
+                                "created_at": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "example": "2024-01-15 10:30:00"
+                                },
+                                "location_count": {
+                                    "type": "integer",
+                                    "description": "Included when include_counts=true",
+                                    "example": 1250
+                                },
+                                "driving_count": {
+                                    "type": "integer",
+                                    "description": "Included when include_counts=true",
+                                    "example": 45
+                                },
+                                "last_location_time": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "Included when include_metadata=true",
+                                    "example": "2024-10-26 14:30:00"
+                                },
+                                "last_driving_time": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "Included when include_metadata=true",
+                                    "example": "2024-10-25 09:15:00"
+                                }
+                            }
+                        }
+                    },
+                    "count": {
+                        "type": "integer",
+                        "example": 5
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["database", "file"],
+                        "example": "database"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2024-10-27T10:30:00Z"
+                    }
+                }
+            },
+            "LocationsResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "integer",
+                                    "example": 12345
+                                },
+                                "device_id": {
+                                    "type": "string",
+                                    "example": "device-12345"
+                                },
+                                "user_id": {
+                                    "type": "integer",
+                                    "example": 1
+                                },
+                                "username": {
+                                    "type": "string",
+                                    "example": "john_doe"
+                                },
+                                "display_name": {
+                                    "type": "string",
+                                    "example": "John Doe"
+                                },
+                                "server_time": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "example": "2024-10-27 10:30:00"
+                                },
+                                "client_time": {
+                                    "type": "integer",
+                                    "example": 1726588200000
+                                },
+                                "latitude": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 32.0853
+                                },
+                                "longitude": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 34.7818
+                                },
+                                "accuracy": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 5.0
+                                },
+                                "altitude": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 100.5
+                                },
+                                "speed": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 25.3
+                                },
+                                "bearing": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 180.0
+                                },
+                                "battery_level": {
+                                    "type": "integer",
+                                    "example": 85
+                                },
+                                "anomaly_status": {
+                                    "type": "string",
+                                    "description": "Included when include_anomaly_status=true",
+                                    "example": "normal"
+                                },
+                                "marked_by_user": {
+                                    "type": "integer",
+                                    "description": "Included when include_anomaly_status=true",
+                                    "example": 0
+                                }
+                            }
+                        }
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of records in this response",
+                        "example": 100
+                    },
+                    "total": {
+                        "type": "integer",
+                        "description": "Total records matching filters",
+                        "example": 1250
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "example": 1000
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["database", "file"],
+                        "example": "database"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2024-10-27T10:30:00Z"
+                    }
+                }
+            },
+            "DrivingRecordsResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "integer",
+                                    "example": 456
+                                },
+                                "device_id": {
+                                    "type": "string",
+                                    "example": "device-12345"
+                                },
+                                "user_id": {
+                                    "type": "integer",
+                                    "example": 1
+                                },
+                                "username": {
+                                    "type": "string",
+                                    "example": "john_doe"
+                                },
+                                "display_name": {
+                                    "type": "string",
+                                    "example": "John Doe"
+                                },
+                                "server_time": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "example": "2024-10-27 10:30:00"
+                                },
+                                "client_time": {
+                                    "type": "integer",
+                                    "example": 1726588200000
+                                },
+                                "event_type": {
+                                    "type": "string",
+                                    "enum": ["start", "data", "stop"],
+                                    "example": "start"
+                                },
+                                "trip_id": {
+                                    "type": "string",
+                                    "example": "trip-abc123"
+                                },
+                                "latitude": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 32.0853
+                                },
+                                "longitude": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 34.7818
+                                },
+                                "accuracy": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 5.0
+                                },
+                                "speed": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 25.3
+                                },
+                                "bearing": {
+                                    "type": "number",
+                                    "format": "float",
+                                    "example": 180.0
+                                }
+                            }
+                        }
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of records in this response",
+                        "example": 50
+                    },
+                    "total": {
+                        "type": "integer",
+                        "description": "Total records matching filters",
+                        "example": 150
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "example": 1000
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["database", "file"],
+                        "example": "database"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2024-10-27T10:30:00Z"
+                    }
+                }
+            },
+            "LiveLatestResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "locations": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "device_id": {
+                                            "type": "string",
+                                            "example": "device-12345"
+                                        },
+                                        "user_id": {
+                                            "type": "integer",
+                                            "example": 1
+                                        },
+                                        "username": {
+                                            "type": "string",
+                                            "example": "john_doe"
+                                        },
+                                        "display_name": {
+                                            "type": "string",
+                                            "example": "John Doe"
+                                        },
+                                        "latitude": {
+                                            "type": "number",
+                                            "format": "double",
+                                            "example": 32.0853
+                                        },
+                                        "longitude": {
+                                            "type": "number",
+                                            "format": "double",
+                                            "example": 34.7818
+                                        },
+                                        "accuracy": {
+                                            "type": "number",
+                                            "format": "float",
+                                            "example": 5.0
+                                        },
+                                        "speed": {
+                                            "type": "number",
+                                            "format": "float",
+                                            "example": 25.3
+                                        },
+                                        "battery_level": {
+                                            "type": "integer",
+                                            "example": 85
+                                        },
+                                        "server_time": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "example": "2024-10-27 14:30:00"
+                                        },
+                                        "age_seconds": {
+                                            "type": "integer",
+                                            "description": "Age of location in seconds",
+                                            "example": 120
+                                        },
+                                        "is_recent": {
+                                            "type": "boolean",
+                                            "description": "Whether location is within max_age threshold",
+                                            "example": true
+                                        }
+                                    }
+                                }
+                            },
+                            "count": {
+                                "type": "integer",
+                                "example": 1
+                            },
+                            "max_age": {
+                                "type": "integer",
+                                "example": 3600
+                            }
+                        }
+                    }
+                }
+            },
+            "LiveStreamResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "device_id": {
+                                            "type": "string",
+                                            "example": "device-12345"
+                                        },
+                                        "user_id": {
+                                            "type": "integer",
+                                            "example": 1
+                                        },
+                                        "username": {
+                                            "type": "string",
+                                            "example": "john_doe"
+                                        },
+                                        "latitude": {
+                                            "type": "number",
+                                            "format": "double",
+                                            "example": 32.0853
+                                        },
+                                        "longitude": {
+                                            "type": "number",
+                                            "format": "double",
+                                            "example": 34.7818
+                                        },
+                                        "accuracy": {
+                                            "type": "number",
+                                            "format": "float",
+                                            "example": 5.0
+                                        },
+                                        "server_time": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "example": "2024-10-27 14:30:00"
+                                        },
+                                        "server_timestamp": {
+                                            "type": "integer",
+                                            "format": "int64",
+                                            "description": "Server timestamp in milliseconds",
+                                            "example": 1729950600000
+                                        }
+                                    }
+                                }
+                            },
+                            "cursor": {
+                                "type": "integer",
+                                "format": "int64",
+                                "description": "Cursor for next poll (timestamp in milliseconds)",
+                                "example": 1729950600000
+                            },
+                            "has_more": {
+                                "type": "boolean",
+                                "description": "Whether more data is available",
+                                "example": false
+                            },
+                            "count": {
+                                "type": "integer",
+                                "example": 1
+                            }
+                        }
+                    }
+                }
+            },
+            "LiveHistoryResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "data": {
+                        "type": "object",
+                        "properties": {
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "device_id": {
+                                            "type": "string",
+                                            "example": "device-12345"
+                                        },
+                                        "user_id": {
+                                            "type": "integer",
+                                            "example": 1
+                                        },
+                                        "username": {
+                                            "type": "string",
+                                            "example": "john_doe"
+                                        },
+                                        "latitude": {
+                                            "type": "number",
+                                            "format": "double",
+                                            "example": 32.0853
+                                        },
+                                        "longitude": {
+                                            "type": "number",
+                                            "format": "double",
+                                            "example": 34.7818
+                                        },
+                                        "server_time": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "example": "2024-10-27 14:30:00"
+                                        }
+                                    }
+                                }
+                            },
+                            "count": {
+                                "type": "integer",
+                                "description": "Number of records in this response",
+                                "example": 100
+                            },
+                            "total": {
+                                "type": "integer",
+                                "description": "Total records matching filters",
+                                "example": 450
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "example": 100
+                            },
+                            "offset": {
+                                "type": "integer",
+                                "example": 0
+                            },
+                            "duration": {
+                                "type": "integer",
+                                "description": "Time window in seconds",
+                                "example": 3600
+                            },
+                            "source": {
+                                "type": "string",
+                                "enum": ["cache"],
+                                "example": "cache"
+                            }
+                        }
+                    }
+                }
+            },
+            "ApiInfo": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Location Tracking API"
+                    },
+                    "version": {
+                        "type": "string",
+                        "example": "2.0.0"
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "operational"
+                    },
+                    "endpoints": {
+                        "type": "object"
+                    },
+                    "authentication": {
+                        "type": "object"
+                    },
+                    "system": {
+                        "type": "object"
+                    }
+                }
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["error"],
+                        "example": "error"
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "An error occurred"
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2024-09-21T10:30:00Z"
+                    },
+                    "error_code": {
+                        "type": "integer",
+                        "example": 400
+                    },
+                    "details": {
+                        "type": "object",
+                        "description": "Additional error details"
+                    }
+                }
+            }
+        },
+        "responses": {
+            "BadRequest": {
+                "description": "Bad request - invalid input data",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "Unauthorized": {
+                "description": "Unauthorized - invalid or missing authentication",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "ValidationError": {
+                "description": "Validation error - invalid field values",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "RateLimitExceeded": {
+                "description": "Rate limit exceeded",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "ServerError": {
+                "description": "Internal server error",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "examples": {
+            "BasicLocation": {
+                "summary": "Basic location data",
+                "value": {
+                    "id": "device-12345",
+                    "name": "john_doe",
+                    "latitude": 32.0853,
+                    "longitude": 34.7818,
+                    "timestamp": 1726588200000
+                }
+            },
+            "DetailedLocation": {
+                "summary": "Detailed location data with all optional fields",
+                "value": {
+                    "id": "device-12345",
+                    "name": "john_doe",
+                    "latitude": 32.0853,
+                    "longitude": 34.7818,
+                    "accuracy": 5.0,
+                    "timestamp": 1726588200000,
+                    "altitude": 100.5,
+                    "speed": 25.3,
+                    "bearing": 180.0,
+                    "battery_level": 85,
+                    "network_type": "4G",
+                    "provider": "GPS"
+                }
+            },
+            "DrivingStart": {
+                "summary": "Start driving event",
+                "value": {
+                    "id": "device-12345",
+                    "name": "john_doe",
+                    "event": "start",
+                    "timestamp": 1726588200000,
+                    "location": {
+                        "latitude": 32.0853,
+                        "longitude": 34.7818,
+                        "accuracy": 5.0
+                    }
+                }
+            },
+            "DrivingData": {
+                "summary": "Driving data event",
+                "value": {
+                    "id": "device-12345",
+                    "name": "john_doe",
+                    "event": "data",
+                    "timestamp": 1726588260000,
+                    "location": {
+                        "latitude": 32.0860,
+                        "longitude": 34.7825,
+                        "accuracy": 4.0
+                    },
+                    "speed": 16.67,
+                    "bearing": 90.0
+                }
+            },
+            "DrivingStop": {
+                "summary": "Stop driving event with trip summary",
+                "value": {
+                    "id": "device-12345",
+                    "name": "john_doe",
+                    "event": "stop",
+                    "timestamp": 1726590000000,
+                    "location": {
+                        "latitude": 32.0900,
+                        "longitude": 34.7900,
+                        "accuracy": 3.0
+                    },
+                    "trip_summary": {
+                        "distance": 15420.5,
+                        "duration": 1800,
+                        "max_speed": 27.78,
+                        "avg_speed": 8.57
+                    }
+                }
+            },
+            "BatchSyncSingle": {
+                "summary": "Single part batch sync",
+                "value": {
+                    "sync_id": "sync_64f1a2b3c4d5e",
+                    "part": 1,
+                    "total_parts": 1,
+                    "device_id": "device-12345",
+                    "user_name": "john_doe",
+                    "records": [
+                        {
+                            "type": "location",
+                            "timestamp": 1726588200000,
+                            "latitude": 32.0853,
+                            "longitude": 34.7818,
+                            "accuracy": 5.0
+                        },
+                        {
+                            "type": "location",
+                            "timestamp": 1726588260000,
+                            "latitude": 32.0860,
+                            "longitude": 34.7825,
+                            "accuracy": 4.0
+                        }
+                    ]
+                }
+            },
+            "BatchSyncMulti": {
+                "summary": "Multi-part batch sync (part 1 of 3)",
+                "value": {
+                    "sync_id": "sync_64f1a2b3c4d5e",
+                    "part": 1,
+                    "total_parts": 3,
+                    "device_id": "device-12345",
+                    "user_name": "john_doe",
+                    "records": [
+                        {
+                            "type": "location",
+                            "timestamp": 1726588200000,
+                            "latitude": 32.0853,
+                            "longitude": 34.7818
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

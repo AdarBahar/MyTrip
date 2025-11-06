@@ -1,0 +1,14 @@
+{
+    "tokens": [
+        "4Q9j0INedMHobgNdJx+PqcXesQjifyl9LCE+W2phLdI=",
+        "dev-token-12345",
+        "test-api-key-67890"
+    ],
+    "description": "Valid API tokens for location tracking system",
+    "created": "2025-09-22",
+    "notes": [
+        "First token is the production token used by mobile apps",
+        "dev-token-12345 is for development testing",
+        "test-api-key-67890 is for API testing"
+    ]
+}

@@ -81,24 +81,34 @@ else:
 
 from app.main import app
 from app.core.database import get_db
-from app.core.location_database import get_location_db
+from app.core.location_database import get_location_db, LocationBase
 from app.models.base import Base
 from app.models.user import User
 from app.models.trip import Trip
 
+# Ensure location models are imported so tables are registered with LocationBase metadata
+from app.models import location_records as _location_models  # noqa: F401
 
-# Test database URL (in-memory SQLite)
+# Test database URLs (in-memory SQLite)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+SQLALCHEMY_LOCATION_DATABASE_URL = "sqlite:///:memory:"
 
-# Create test engine
+# Create test engines (separate engines to avoid table name collisions like 'users')
 test_engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
 
-# Create test session
+test_engine_location = create_engine(
+    SQLALCHEMY_LOCATION_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+# Create test sessions
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+LocationTestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine_location)
 
 
 def override_get_db():
@@ -111,9 +121,9 @@ def override_get_db():
 
 
 def override_get_location_db():
-    """Override location database dependency for tests"""
+    """Override location database dependency for tests (separate engine)"""
     try:
-        db = TestingSessionLocal()  # Use same test database for location tests
+        db = LocationTestingSessionLocal()
         yield db
     finally:
         db.close()
@@ -147,10 +157,11 @@ def event_loop():
 @pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database session for each test"""
-    # Create all tables
+    # Create all tables (main DB on test_engine, location DB on test_engine_location)
     Base.metadata.create_all(bind=test_engine)
+    LocationBase.metadata.create_all(bind=test_engine_location)
 
-    # Create session
+    # Create session (for main DB fixtures)
     session = TestingSessionLocal()
 
     try:
@@ -158,6 +169,7 @@ def db_session():
     finally:
         session.close()
         # Drop all tables after test
+        LocationBase.metadata.drop_all(bind=test_engine_location)
         Base.metadata.drop_all(bind=test_engine)
 
 

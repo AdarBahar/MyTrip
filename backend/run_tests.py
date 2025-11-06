@@ -85,7 +85,8 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
     os.chdir(backend_dir)
 
     # Base pytest command
-    cmd = ["python", "-m", "pytest"]
+    # Use current Python executable for portability (python vs python3)
+    cmd = [sys.executable, "-m", "pytest"]
 
     # Add test selection based on type
     if test_type == "all":
@@ -113,8 +114,27 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
         health_tests = ["tests/test_health.py"]
         cmd.extend(_get_existing_test_files(health_tests))
     elif test_type == "location":
-        location_tests = ["tests/test_location.py"]
+        location_tests = [
+            "tests/test_location.py",
+            "tests/location/test_ingest.py",
+            "tests/location/test_driving.py",
+            "tests/location/test_batch_sync.py",
+            "tests/location/test_locations_read.py",
+            "tests/location/test_driving_read.py",
+            "tests/location/test_users_read.py",
+            "tests/location/test_live_endpoints.py",
+            "tests/location/test_stats.py",
+        ]
         cmd.extend(_get_existing_test_files(location_tests))
+    elif test_type == "location_ingest":
+        ingest_tests = ["tests/location/test_ingest.py"]
+        cmd.extend(_get_existing_test_files(ingest_tests))
+    elif test_type == "location_driving":
+        driving_tests = ["tests/location/test_driving.py"]
+        cmd.extend(_get_existing_test_files(driving_tests))
+    elif test_type == "location_batch":
+        batch_tests = ["tests/location/test_batch_sync.py"]
+        cmd.extend(_get_existing_test_files(batch_tests))
     elif test_type == "ai":
         ai_tests = ["tests/test_ai.py"]
         cmd.extend(_get_existing_test_files(ai_tests))
@@ -128,7 +148,15 @@ def run_tests(test_type="all", verbose=False, coverage=False, quick=False, produ
             "tests/test_days.py",
             "tests/test_stops_management.py",
             "tests/test_routing.py",
-            "tests/test_location.py"
+            "tests/test_location.py",
+            "tests/location/test_ingest.py",
+            "tests/location/test_driving.py",
+            "tests/location/test_batch_sync.py",
+            "tests/location/test_locations_read.py",
+            "tests/location/test_driving_read.py",
+            "tests/location/test_users_read.py",
+            "tests/location/test_live_endpoints.py",
+            "tests/location/test_stats.py",
         ]
         cmd.extend(_get_existing_test_files(comprehensive_tests))
     elif test_type == "endpoints":
@@ -219,7 +247,7 @@ def main():
         default="all",
         choices=[
             "all", "unit", "integration", "auth", "trips", "days", "stops",
-            "routing", "health", "location", "ai", "comprehensive", "endpoints"
+            "routing", "health", "location", "location_ingest", "location_driving", "location_batch", "ai", "comprehensive", "endpoints"
         ],
         help="Type of tests to run (default: all)"
     )

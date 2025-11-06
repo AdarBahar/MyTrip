@@ -1,0 +1,387 @@
+{
+  "info": {
+    "name": "Location Tracker API",
+    "description": "Enhanced Location Tracking API with driving detection support",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://www.bahar.co.il/location",
+      "type": "string"
+    },
+    {
+      "key": "device_id",
+      "value": "11111111111",
+      "type": "string"
+    },
+    {
+      "key": "user_name",
+      "value": "script-testing",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Location API",
+      "item": [
+        {
+          "name": "Basic Location Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{device_id}}\",\n  \"name\": \"{{user_name}}\",\n  \"latitude\": 32.0853,\n  \"longitude\": 34.7818,\n  \"timestamp\": {{$timestamp}}000,\n  \"accuracy\": 15.0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/getloc.php",
+              "host": ["{{base_url}}"],
+              "path": ["getloc.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is successful\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.be.oneOf(['success', 'warning']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Enhanced Location Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{device_id}}\",\n  \"name\": \"{{user_name}}\",\n  \"latitude\": 32.0685138,\n  \"longitude\": 34.7938829,\n  \"timestamp\": {{$timestamp}}000,\n  \"accuracy\": 15.4,\n  \"altitude\": 125.5,\n  \"speed\": 45.2,\n  \"bearing\": 245.8,\n  \"battery_level\": 85,\n  \"signal_strength\": {\n    \"gps_satellites\": 8,\n    \"network_strength\": -65\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/getloc.php",
+              "host": ["{{base_url}}"],
+              "path": ["getloc.php"]
+            }
+          }
+        },
+        {
+          "name": "Location Data - Invalid Values (Test Validation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{device_id}}\",\n  \"name\": \"{{user_name}}\",\n  \"latitude\": 95.0,\n  \"longitude\": 34.7938829,\n  \"timestamp\": {{$timestamp}}000,\n  \"accuracy\": -5,\n  \"speed\": -10,\n  \"bearing\": 400,\n  \"battery_level\": 150\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/getloc.php",
+              "host": ["{{base_url}}"],
+              "path": ["getloc.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422 for invalid data\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error details\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('details');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Driving API",
+      "item": [
+        {
+          "name": "1. Start Driving Trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{device_id}}\",\n  \"name\": \"{{user_name}}\",\n  \"event_type\": \"driving_start\",\n  \"timestamp\": {{$timestamp}}000,\n  \"location\": {\n    \"latitude\": 32.0685138,\n    \"longitude\": 34.7938829,\n    \"accuracy\": 15.4\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/driving.php",
+              "host": ["{{base_url}}"],
+              "path": ["driving.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Trip started successfully\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('success');",
+                  "    pm.expect(jsonData).to.have.property('trip_id');",
+                  "});",
+                  "",
+                  "// Store trip_id for subsequent requests",
+                  "if (pm.response.json().trip_id) {",
+                  "    pm.collectionVariables.set('trip_id', pm.response.json().trip_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Send Driving Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{device_id}}\",\n  \"name\": \"{{user_name}}\",\n  \"event_type\": \"driving_data\",\n  \"timestamp\": {{$timestamp}}000,\n  \"location\": {\n    \"latitude\": 32.0695138,\n    \"longitude\": 34.7948829,\n    \"accuracy\": 12.1\n  },\n  \"speed\": 65.5,\n  \"bearing\": 245.8,\n  \"altitude\": 125.5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/driving.php",
+              "host": ["{{base_url}}"],
+              "path": ["driving.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Driving data received\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('success');",
+                  "    pm.expect(jsonData.message).to.include('data received');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Stop Driving Trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{device_id}}\",\n  \"name\": \"{{user_name}}\",\n  \"event_type\": \"driving_stop\",\n  \"timestamp\": {{$timestamp}}000,\n  \"location\": {\n    \"latitude\": 32.0755138,\n    \"longitude\": 34.8038829,\n    \"accuracy\": 18.2\n  },\n  \"trip_summary\": {\n    \"duration_seconds\": 1800,\n    \"distance_meters\": 25000,\n    \"avg_speed\": 50.2,\n    \"max_speed\": 75.1\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/driving.php",
+              "host": ["{{base_url}}"],
+              "path": ["driving.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Trip stopped successfully\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.be.oneOf(['success', 'warning']);",
+                  "    pm.expect(jsonData.message).to.include('stopped');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Driving Data - No Active Trip (Error Test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"device_no_trip_12345\",\n  \"name\": \"{{user_name}}\",\n  \"event_type\": \"driving_data\",\n  \"timestamp\": {{$timestamp}}000,\n  \"location\": {\n    \"latitude\": 32.0695138,\n    \"longitude\": 34.7948829,\n    \"accuracy\": 12.1\n  },\n  \"speed\": 65.5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/driving.php",
+              "host": ["{{base_url}}"],
+              "path": ["driving.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Error for no active trip\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('error');",
+                  "    pm.expect(jsonData.message).to.include('No active trip');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error Testing",
+      "item": [
+        {
+          "name": "Invalid JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ invalid json }"
+            },
+            "url": {
+              "raw": "{{base_url}}/getloc.php",
+              "host": ["{{base_url}}"],
+              "path": ["getloc.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for invalid JSON\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message for invalid JSON\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.include('Invalid JSON');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing Required Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{device_id}}\",\n  \"timestamp\": {{$timestamp}}000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/getloc.php",
+              "host": ["{{base_url}}"],
+              "path": ["getloc.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422 for missing fields\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test(\"Error details provided\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('details');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Request (Method Not Allowed)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/getloc.php",
+              "host": ["{{base_url}}"],
+              "path": ["getloc.php"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 405 for GET request\", function () {",
+                  "    pm.response.to.have.status(405);",
+                  "});",
+                  "",
+                  "pm.test(\"Method not allowed message\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.include('Method not allowed');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
