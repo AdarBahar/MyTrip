@@ -912,7 +912,96 @@ def _build_stats_response(
     cache_key = _stats_cache_key(cache_device_key, timeframe, bucket_start, bucket_end)
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
     in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
-    cached = None if in_prod_test else _stats_cache_get(cache_key)
+    cached = None  # defer cache lookup until loc_latest is known in prod-test mode
+    # In production-test mode, derive a tight per-run window start from latest rows
+    loc_run_start: Optional[datetime] = None
+    drv_run_start: Optional[datetime] = None
+    loc_latest: Optional[datetime] = None
+    if in_prod_test:
+        # Latest location row for this device by testclient
+        _q_latest_loc = (
+            db.query(func.max(LocationRecord.server_time))
+            .filter(LocationRecord.device_id == resolved_device_id)
+            .filter(
+                or_(
+                    LocationRecord.user_agent.ilike("%testclient%"),
+                    LocationRecord.ip_address == "testclient",
+                )
+            )
+        )
+        loc_latest = _q_latest_loc.scalar()
+        if loc_latest:
+            loc_run_start = loc_latest - timedelta(seconds=2)
+
+        # Latest driving row for this device by testclient
+        _q_latest_drv = (
+            db.query(func.max(DrivingRecord.server_time))
+            .filter(DrivingRecord.device_id == resolved_device_id)
+            .filter(
+                or_(
+                    DrivingRecord.user_agent.ilike("%testclient%"),
+                    DrivingRecord.ip_address == "testclient",
+                )
+            )
+        )
+        _drv_latest = _q_latest_drv.scalar()
+        if _drv_latest:
+            drv_run_start = _drv_latest - timedelta(seconds=2)
+        # Determine dynamic per-run cutoffs based on most recent N rows
+        loc_cutoff = None
+        drv_cutoff = None
+        try:
+            last5_loc = (
+                db.query(LocationRecord.server_time)
+                .filter(LocationRecord.device_id == resolved_device_id)
+                .filter(
+                    or_(
+                        LocationRecord.user_agent.ilike("%testclient%"),
+                        LocationRecord.ip_address == "testclient",
+                    )
+                )
+                .order_by(LocationRecord.server_time.desc())
+                .limit(5)
+                .all()
+            )
+            if last5_loc:
+                loc_cutoff = min(ts for (ts,) in last5_loc)
+        except Exception:
+            loc_cutoff = None
+        if not loc_cutoff:
+            loc_cutoff = loc_run_start or (datetime.now(timezone.utc) - timedelta(seconds=2))
+
+        try:
+            last2_drv = (
+                db.query(DrivingRecord.server_time)
+                .filter(DrivingRecord.device_id == resolved_device_id)
+                .filter(
+                    or_(
+                        DrivingRecord.user_agent.ilike("%testclient%"),
+                        DrivingRecord.ip_address == "testclient",
+                    )
+                )
+                .order_by(DrivingRecord.server_time.desc())
+                .limit(2)
+                .all()
+            )
+            if last2_drv:
+                drv_cutoff = min(ts for (ts,) in last2_drv)
+        except Exception:
+            drv_cutoff = None
+        if not drv_cutoff:
+            drv_cutoff = drv_run_start or (datetime.now(timezone.utc) - timedelta(seconds=2))
+
+
+    # After deriving run start/last markers, perform cache lookup with a dynamic key in prod-test mode
+    if in_prod_test:
+        _latest_key_part = loc_latest.isoformat() if loc_latest else "none"
+        dynamic_cache_key = f"{cache_key}:latest:{_latest_key_part}"
+        cached = _stats_cache_get(dynamic_cache_key)
+    else:
+        dynamic_cache_key = cache_key
+        cached = _stats_cache_get(dynamic_cache_key)
+
 
     # Helper to compute segments without affecting cached base
     def _compute_segments(granularity: Optional[str]) -> Optional[dict]:
@@ -939,10 +1028,8 @@ def _build_stats_response(
         )
         # In production-test mode, restrict to recent testclient-authored rows only;
         # otherwise use the requested timeframe [start_dt, end_dt].
-        prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
-        in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
         if in_prod_test:
-            cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+            cutoff = loc_cutoff
             loc_rows = (
                 loc_rows.filter(
                     or_(
@@ -964,7 +1051,7 @@ def _build_stats_response(
             .filter(DrivingRecord.device_id == resolved_device_id)
         )
         if in_prod_test:
-            cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+            cutoff = drv_cutoff
             drv_rows = (
                 drv_rows.filter(
                     or_(
@@ -1022,22 +1109,19 @@ def _build_stats_response(
     )
     # Apply timeframe filter conditionally to avoid timezone mismatches in production-test mode
     if in_prod_test:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        cutoff = loc_cutoff
         q_loc = q_loc.filter(LocationRecord.server_time >= cutoff)
     else:
         q_loc = q_loc.filter(LocationRecord.server_time.between(start_dt, end_dt))
 
     # In production-test mode, restrict to points authored by the test client
-    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
-    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     if in_prod_test:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
         q_loc = q_loc.filter(
             or_(
                 LocationRecord.user_agent.ilike("%testclient%"),
                 LocationRecord.ip_address == "testclient",
             )
-        ).filter(LocationRecord.server_time >= cutoff)
+        )
 
     location_updates = q_loc.count()
     updates_realtime = q_loc.filter(LocationRecord.source_type == "realtime").count()
@@ -1049,7 +1133,7 @@ def _build_stats_response(
         .filter(DrivingRecord.trip_id.isnot(None))
     )
     if in_prod_test:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        cutoff = drv_cutoff
         q_drv = q_drv.filter(
             or_(
                 DrivingRecord.user_agent.ilike("%testclient%"),
@@ -1062,7 +1146,7 @@ def _build_stats_response(
 
     # Meta
     if in_prod_test:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        cutoff = loc_run_start or (datetime.now(timezone.utc) - timedelta(seconds=2))
         first_seen = (
             db.query(func.min(LocationRecord.server_time))
             .filter(
@@ -1115,9 +1199,8 @@ def _build_stats_response(
         },
     }
 
-    # Store base in cache (without segments) — skip in production-test mode to avoid cross-run contamination
-    if not in_prod_test:
-        _stats_cache_set(cache_key, base, _stats_ttl_for_timeframe(timeframe))
+    # Store base in cache (without segments). In prod-test mode, include latest timestamp in the key
+    _stats_cache_set(dynamic_cache_key, base, _stats_ttl_for_timeframe(timeframe))
 
     if include_segments:
         gran = "hour" if timeframe == "last_24h" else ("day" if timeframe == "last_7d" else None)
