@@ -1249,7 +1249,7 @@ async def live_history(
                 "speed": loc.speed,
                 "bearing": loc.bearing,
                 "battery_level": loc.battery_level,
-                "recorded_at": getattr(loc, "client_time_iso", None),
+                "recorded_at": (getattr(loc, "client_time_iso", None).isoformat() if getattr(loc, "client_time_iso", None) is not None and hasattr(getattr(loc, "client_time_iso", None), "isoformat") else getattr(loc, "client_time_iso", None)),
                 "server_time": st.isoformat() if st else None,
                 "server_timestamp": server_ts,
             }
@@ -1351,7 +1351,7 @@ async def live_latest(
                 "battery_level": loc.battery_level,
                 "network_type": getattr(loc, "network_type", None),
                 "provider": getattr(loc, "provider", None),
-                "recorded_at": getattr(loc, "client_time_iso", None),
+                "recorded_at": (getattr(loc, "client_time_iso", None).isoformat() if getattr(loc, "client_time_iso", None) is not None and hasattr(getattr(loc, "client_time_iso", None), "isoformat") else getattr(loc, "client_time_iso", None)),
                 "server_time": st.isoformat() if st else None,
                 "age_seconds": age_seconds,
                 "is_recent": age_seconds < 300,
@@ -1449,7 +1449,7 @@ async def live_stream(
                 "speed": loc.speed,
                 "bearing": loc.bearing,
                 "battery_level": loc.battery_level,
-                "recorded_at": getattr(loc, "client_time_iso", None),
+                "recorded_at": (getattr(loc, "client_time_iso", None).isoformat() if getattr(loc, "client_time_iso", None) is not None and hasattr(getattr(loc, "client_time_iso", None), "isoformat") else getattr(loc, "client_time_iso", None)),
                 "server_time": st.isoformat() if st else None,
                 "server_timestamp": server_ts,
             }
