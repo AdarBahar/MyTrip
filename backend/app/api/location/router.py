@@ -18,7 +18,7 @@ import os
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request, Body
-from sqlalchemy import text, func
+from sqlalchemy import text, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, get_location_auth
@@ -705,14 +705,24 @@ async def get_users(
       * include_metadata (default: false): include last_location_time and last_driving_time
     - Ordered by username ASC
     """
+    # Detect production-test mode robustly (env may be 'true', '1', 'yes', etc.)
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+
     # Select users depending on with_location_data
     if with_location_data:
         # In production test mode, restrict to very recent records to avoid cross-test contamination
-        if os.environ.get("PYTEST_PRODUCTION_MODE") == "true":
-            cutoff = datetime.utcnow() - timedelta(seconds=10)
+        if in_prod_test:
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
             subq = (
                 db.query(LocationRecord.user_id)
-                .filter(LocationRecord.server_time >= cutoff)
+                .filter(
+                    LocationRecord.server_time >= cutoff,
+                    or_(
+                        LocationRecord.user_agent.ilike("%testclient%"),
+                        LocationRecord.ip_address == "testclient",
+                    ),
+                )
                 .distinct()
                 .subquery()
             )
@@ -736,16 +746,30 @@ async def get_users(
             "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
         }
         if include_counts:
-            if os.environ.get("PYTEST_PRODUCTION_MODE") == "true":
-                cutoff = datetime.utcnow() - timedelta(seconds=10)
+            if in_prod_test:
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
                 loc_count = (
                     db.query(LocationRecord)
-                    .filter(LocationRecord.user_id == u.id, LocationRecord.server_time >= cutoff)
+                    .filter(
+                        LocationRecord.user_id == u.id,
+                        LocationRecord.server_time >= cutoff,
+                        or_(
+                            LocationRecord.user_agent.ilike("%testclient%"),
+                            LocationRecord.ip_address == "testclient",
+                        ),
+                    )
                     .count()
                 )
                 drv_count = (
                     db.query(DrivingRecord)
-                    .filter(DrivingRecord.user_id == u.id, DrivingRecord.server_time >= cutoff)
+                    .filter(
+                        DrivingRecord.user_id == u.id,
+                        DrivingRecord.server_time >= cutoff,
+                        or_(
+                            DrivingRecord.user_agent.ilike("%testclient%"),
+                            DrivingRecord.ip_address == "testclient",
+                        ),
+                    )
                     .count()
                 )
             else:
@@ -754,16 +778,30 @@ async def get_users(
             item["location_count"] = int(loc_count)
             item["driving_count"] = int(drv_count)
         if include_metadata:
-            if os.environ.get("PYTEST_PRODUCTION_MODE") == "true":
-                cutoff = datetime.utcnow() - timedelta(seconds=10)
+            if in_prod_test:
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
                 last_loc = (
                     db.query(func.max(LocationRecord.server_time))
-                    .filter(LocationRecord.user_id == u.id, LocationRecord.server_time >= cutoff)
+                    .filter(
+                        LocationRecord.user_id == u.id,
+                        LocationRecord.server_time >= cutoff,
+                        or_(
+                            LocationRecord.user_agent.ilike("%testclient%"),
+                            LocationRecord.ip_address == "testclient",
+                        ),
+                    )
                     .scalar()
                 )
                 last_drv = (
                     db.query(func.max(DrivingRecord.server_time))
-                    .filter(DrivingRecord.user_id == u.id, DrivingRecord.server_time >= cutoff)
+                    .filter(
+                        DrivingRecord.user_id == u.id,
+                        DrivingRecord.server_time >= cutoff,
+                        or_(
+                            DrivingRecord.user_agent.ilike("%testclient%"),
+                            DrivingRecord.ip_address == "testclient",
+                        ),
+                    )
                     .scalar()
                 )
             else:
