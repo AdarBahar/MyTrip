@@ -910,7 +910,9 @@ def _build_stats_response(
             bucket_start = bucket_end - timedelta(days=7)
 
     cache_key = _stats_cache_key(cache_device_key, timeframe, bucket_start, bucket_end)
-    cached = _stats_cache_get(cache_key)
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+    cached = None if in_prod_test else _stats_cache_get(cache_key)
 
     # Helper to compute segments without affecting cached base
     def _compute_segments(granularity: Optional[str]) -> Optional[dict]:
@@ -941,12 +943,13 @@ def _build_stats_response(
         prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
         in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
         if in_prod_test:
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
             loc_rows = loc_rows.filter(
                 or_(
                     LocationRecord.user_agent.ilike("%testclient%"),
                     LocationRecord.ip_address == "testclient",
                 )
-            )
+            ).filter(LocationRecord.server_time >= cutoff)
         loc_rows = loc_rows.all()
 
         drv_rows = (
@@ -956,12 +959,13 @@ def _build_stats_response(
             .filter(DrivingRecord.server_time <= end_dt)
         )
         if in_prod_test:
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
             drv_rows = drv_rows.filter(
                 or_(
                     DrivingRecord.user_agent.ilike("%testclient%"),
                     DrivingRecord.ip_address == "testclient",
                 )
-            )
+            ).filter(DrivingRecord.server_time >= cutoff)
         drv_rows = drv_rows.all()
 
         bucket_payload = []
@@ -1009,12 +1013,13 @@ def _build_stats_response(
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
     in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     if in_prod_test:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
         q_loc = q_loc.filter(
             or_(
                 LocationRecord.user_agent.ilike("%testclient%"),
                 LocationRecord.ip_address == "testclient",
             )
-        )
+        ).filter(LocationRecord.server_time >= cutoff)
 
     location_updates = q_loc.count()
     updates_realtime = q_loc.filter(LocationRecord.source_type == "realtime").count()
@@ -1027,12 +1032,13 @@ def _build_stats_response(
         .filter(DrivingRecord.trip_id.isnot(None))
     )
     if in_prod_test:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
         q_drv = q_drv.filter(
             or_(
                 DrivingRecord.user_agent.ilike("%testclient%"),
                 DrivingRecord.ip_address == "testclient",
             )
-        )
+        ).filter(DrivingRecord.server_time >= cutoff)
     driving_sessions = q_drv.distinct().count()
 
     # Meta
@@ -1090,8 +1096,9 @@ def _build_stats_response(
         },
     }
 
-    # Store base in cache (without segments)
-    _stats_cache_set(cache_key, base, _stats_ttl_for_timeframe(timeframe))
+    # Store base in cache (without segments) — skip in production-test mode to avoid cross-run contamination
+    if not in_prod_test:
+        _stats_cache_set(cache_key, base, _stats_ttl_for_timeframe(timeframe))
 
     if include_segments:
         gran = "hour" if timeframe == "last_24h" else ("day" if timeframe == "last_7d" else None)
