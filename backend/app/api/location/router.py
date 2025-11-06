@@ -508,7 +508,7 @@ async def get_locations_query(
     )
 
     if user:
-        q = q.filter(LocationUser.username == user)
+        q = q.filter(func.lower(LocationUser.username) == user.lower())
     if dt_from:
         q = q.filter(LocationRecord.server_time >= dt_from)
     if dt_to:
@@ -543,7 +543,7 @@ async def get_locations_query(
         item = {
             "id": int(loc.id) if loc.id is not None else None,
             "user_id": loc.user_id,
-            "username": usr.username,
+            "username": usr.username.lower(),
             "display_name": usr.display_name,
             "device_id": loc.device_id,
             "server_time": loc.server_time.isoformat() if loc.server_time else None,
@@ -632,7 +632,7 @@ async def get_driving_records_query(
     )
 
     if user:
-        q = q.filter(LocationUser.username == user)
+        q = q.filter(func.lower(LocationUser.username) == user.lower())
     if dt_from:
         q = q.filter(DrivingRecord.server_time >= dt_from)
     if dt_to:
@@ -652,7 +652,7 @@ async def get_driving_records_query(
         item = {
             "id": int(dr.id) if dr.id is not None else None,
             "user_id": dr.user_id,
-            "username": usr.username,
+            "username": usr.username.lower(),
             "display_name": usr.display_name,
             "device_id": dr.device_id,
             "event_type": (dr.event_type[8:] if isinstance(dr.event_type, str) and dr.event_type.startswith("driving_") else dr.event_type),
@@ -720,7 +720,7 @@ async def get_users(
     for u in users:
         item = {
             "id": u.id,
-            "username": u.username,
+            "username": (u.username.lower() if isinstance(u.username, str) else u.username),
             "display_name": u.display_name,
             "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
         }
@@ -1063,7 +1063,7 @@ async def live_history(
     )
 
     if usernames and not all:
-        q = q.filter(LocationUser.username.in_(usernames))
+        q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
     if device_ids:
         q = q.filter(LocationRecord.device_id.in_(device_ids))
 
@@ -1085,7 +1085,7 @@ async def live_history(
             {
                 "device_id": loc.device_id,
                 "user_id": int(loc.user_id) if loc.user_id is not None else None,
-                "username": usr.username,
+                "username": (usr.username.lower() if isinstance(usr.username, str) else usr.username),
                 "display_name": usr.display_name,
                 "latitude": lat_val,
                 "longitude": lng_val,
@@ -1153,7 +1153,7 @@ async def live_latest(
         q = q.filter(LocationRecord.server_time >= since_dt)
 
     if usernames and not all:
-        q = q.filter(LocationUser.username.in_(usernames))
+        q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
     if device_ids:
         q = q.filter(LocationRecord.device_id.in_(device_ids))
 
@@ -1173,7 +1173,7 @@ async def live_latest(
             {
                 "device_id": loc.device_id,
                 "user_id": int(loc.user_id) if loc.user_id is not None else None,
-                "username": usr.username,
+                "username": (usr.username.lower() if isinstance(usr.username, str) else usr.username),
                 "display_name": usr.display_name,
                 "latitude": float(loc.latitude) if loc.latitude is not None else None,
                 "longitude": float(loc.longitude) if loc.longitude is not None else None,
@@ -1245,7 +1245,7 @@ async def live_stream(
     )
 
     if usernames and not all:
-        q = q.filter(LocationUser.username.in_(usernames))
+        q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
     if device_ids:
         q = q.filter(LocationRecord.device_id.in_(device_ids))
 
@@ -1261,7 +1261,7 @@ async def live_stream(
             {
                 "device_id": loc.device_id,
                 "user_id": int(loc.user_id) if loc.user_id is not None else None,
-                "username": usr.username,
+                "username": (usr.username.lower() if isinstance(usr.username, str) else usr.username),
                 "display_name": usr.display_name,
                 "latitude": float(loc.latitude) if loc.latitude is not None else None,
                 "longitude": float(loc.longitude) if loc.longitude is not None else None,
