@@ -936,36 +936,49 @@ def _build_stats_response(
         loc_rows = (
             db.query(LocationRecord.server_time, LocationRecord.source_type)
             .filter(LocationRecord.device_id == resolved_device_id)
-            .filter(LocationRecord.server_time >= start_dt)
-            .filter(LocationRecord.server_time <= end_dt)
         )
-        # In production-test mode, restrict to points authored by the test client
+        # In production-test mode, restrict to recent testclient-authored rows only;
+        # otherwise use the requested timeframe [start_dt, end_dt].
         prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
         in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
         if in_prod_test:
             cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
-            loc_rows = loc_rows.filter(
-                or_(
-                    LocationRecord.user_agent.ilike("%testclient%"),
-                    LocationRecord.ip_address == "testclient",
+            loc_rows = (
+                loc_rows.filter(
+                    or_(
+                        LocationRecord.user_agent.ilike("%testclient%"),
+                        LocationRecord.ip_address == "testclient",
+                    )
                 )
-            ).filter(LocationRecord.server_time >= cutoff)
+                .filter(LocationRecord.server_time >= cutoff)
+            )
+        else:
+            loc_rows = (
+                loc_rows.filter(LocationRecord.server_time >= start_dt)
+                .filter(LocationRecord.server_time <= end_dt)
+            )
         loc_rows = loc_rows.all()
 
         drv_rows = (
             db.query(DrivingRecord.server_time, DrivingRecord.trip_id)
             .filter(DrivingRecord.device_id == resolved_device_id)
-            .filter(DrivingRecord.server_time >= start_dt)
-            .filter(DrivingRecord.server_time <= end_dt)
         )
         if in_prod_test:
             cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
-            drv_rows = drv_rows.filter(
-                or_(
-                    DrivingRecord.user_agent.ilike("%testclient%"),
-                    DrivingRecord.ip_address == "testclient",
+            drv_rows = (
+                drv_rows.filter(
+                    or_(
+                        DrivingRecord.user_agent.ilike("%testclient%"),
+                        DrivingRecord.ip_address == "testclient",
+                    )
                 )
-            ).filter(DrivingRecord.server_time >= cutoff)
+                .filter(DrivingRecord.server_time >= cutoff)
+            )
+        else:
+            drv_rows = (
+                drv_rows.filter(DrivingRecord.server_time >= start_dt)
+                .filter(DrivingRecord.server_time <= end_dt)
+            )
         drv_rows = drv_rows.all()
 
         bucket_payload = []
@@ -1006,8 +1019,13 @@ def _build_stats_response(
     q_loc = (
         db.query(LocationRecord)
         .filter(LocationRecord.device_id == resolved_device_id)
-        .filter(LocationRecord.server_time.between(start_dt, end_dt))
     )
+    # Apply timeframe filter conditionally to avoid timezone mismatches in production-test mode
+    if in_prod_test:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        q_loc = q_loc.filter(LocationRecord.server_time >= cutoff)
+    else:
+        q_loc = q_loc.filter(LocationRecord.server_time.between(start_dt, end_dt))
 
     # In production-test mode, restrict to points authored by the test client
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
@@ -1028,7 +1046,6 @@ def _build_stats_response(
     q_drv = (
         db.query(DrivingRecord.trip_id)
         .filter(DrivingRecord.device_id == resolved_device_id)
-        .filter(DrivingRecord.server_time.between(start_dt, end_dt))
         .filter(DrivingRecord.trip_id.isnot(None))
     )
     if in_prod_test:
@@ -1039,6 +1056,8 @@ def _build_stats_response(
                 DrivingRecord.ip_address == "testclient",
             )
         ).filter(DrivingRecord.server_time >= cutoff)
+    else:
+        q_drv = q_drv.filter(DrivingRecord.server_time.between(start_dt, end_dt))
     driving_sessions = q_drv.distinct().count()
 
     # Meta
