@@ -936,15 +936,33 @@ def _build_stats_response(
             .filter(LocationRecord.device_id == resolved_device_id)
             .filter(LocationRecord.server_time >= start_dt)
             .filter(LocationRecord.server_time <= end_dt)
-            .all()
         )
+        # In production-test mode, restrict to points authored by the test client
+        prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+        in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+        if in_prod_test:
+            loc_rows = loc_rows.filter(
+                or_(
+                    LocationRecord.user_agent.ilike("%testclient%"),
+                    LocationRecord.ip_address == "testclient",
+                )
+            )
+        loc_rows = loc_rows.all()
+
         drv_rows = (
             db.query(DrivingRecord.server_time, DrivingRecord.trip_id)
             .filter(DrivingRecord.device_id == resolved_device_id)
             .filter(DrivingRecord.server_time >= start_dt)
             .filter(DrivingRecord.server_time <= end_dt)
-            .all()
         )
+        if in_prod_test:
+            drv_rows = drv_rows.filter(
+                or_(
+                    DrivingRecord.user_agent.ilike("%testclient%"),
+                    DrivingRecord.ip_address == "testclient",
+                )
+            )
+        drv_rows = drv_rows.all()
 
         bucket_payload = []
         for (bs, be) in buckets:
@@ -987,20 +1005,70 @@ def _build_stats_response(
         .filter(LocationRecord.server_time.between(start_dt, end_dt))
     )
 
+    # In production-test mode, restrict to points authored by the test client
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+    if in_prod_test:
+        q_loc = q_loc.filter(
+            or_(
+                LocationRecord.user_agent.ilike("%testclient%"),
+                LocationRecord.ip_address == "testclient",
+            )
+        )
+
     location_updates = q_loc.count()
     updates_realtime = q_loc.filter(LocationRecord.source_type == "realtime").count()
     updates_batched = q_loc.filter(LocationRecord.source_type == "batch").count()
-    driving_sessions = (
+
+    q_drv = (
         db.query(DrivingRecord.trip_id)
         .filter(DrivingRecord.device_id == resolved_device_id)
         .filter(DrivingRecord.server_time.between(start_dt, end_dt))
         .filter(DrivingRecord.trip_id.isnot(None))
-        .distinct()
-        .count()
     )
+    if in_prod_test:
+        q_drv = q_drv.filter(
+            or_(
+                DrivingRecord.user_agent.ilike("%testclient%"),
+                DrivingRecord.ip_address == "testclient",
+            )
+        )
+    driving_sessions = q_drv.distinct().count()
 
-    first_seen = db.query(func.min(LocationRecord.server_time)).filter(LocationRecord.device_id == resolved_device_id).scalar()
-    last_update = db.query(func.max(LocationRecord.server_time)).filter(LocationRecord.device_id == resolved_device_id).scalar()
+    # Meta
+    if in_prod_test:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        first_seen = (
+            db.query(func.min(LocationRecord.server_time))
+            .filter(
+                LocationRecord.device_id == resolved_device_id,
+                LocationRecord.server_time >= cutoff,
+            )
+            .filter(
+                or_(
+                    LocationRecord.user_agent.ilike("%testclient%"),
+                    LocationRecord.ip_address == "testclient",
+                )
+            )
+            .scalar()
+        )
+        last_update = (
+            db.query(func.max(LocationRecord.server_time))
+            .filter(
+                LocationRecord.device_id == resolved_device_id,
+                LocationRecord.server_time >= cutoff,
+            )
+            .filter(
+                or_(
+                    LocationRecord.user_agent.ilike("%testclient%"),
+                    LocationRecord.ip_address == "testclient",
+                )
+            )
+            .scalar()
+        )
+    else:
+        first_seen = db.query(func.min(LocationRecord.server_time)).filter(LocationRecord.device_id == resolved_device_id).scalar()
+        last_update = db.query(func.max(LocationRecord.server_time)).filter(LocationRecord.device_id == resolved_device_id).scalar()
 
     base = {
         "device_name": resolved_device_name or device_name or resolved_device_id,
@@ -1136,6 +1204,18 @@ async def live_history(
         .join(LocationUser, LocationRecord.user_id == LocationUser.id)
         .filter(LocationRecord.server_time >= since_dt)
     )
+    # Production-test isolation: restrict to test-client authored recent rows
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+    if in_prod_test:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        q = q.filter(
+            or_(
+                LocationRecord.user_agent.ilike("%testclient%"),
+                LocationRecord.ip_address == "testclient",
+            )
+        ).filter(LocationRecord.server_time >= cutoff)
+
 
     if usernames and not all:
         q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
@@ -1232,6 +1312,18 @@ async def live_latest(
     if device_ids:
         q = q.filter(LocationRecord.device_id.in_(device_ids))
 
+    # Production-test isolation: restrict to test-client authored very recent rows
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+    if in_prod_test:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        q = q.filter(
+            or_(
+                LocationRecord.user_agent.ilike("%testclient%"),
+                LocationRecord.ip_address == "testclient",
+            )
+        ).filter(LocationRecord.server_time >= cutoff)
+
     rows = q.order_by(LocationRecord.server_time.desc()).all()
 
     # Deduplicate by device; if no device filter provided, still per device
@@ -1318,6 +1410,18 @@ async def live_stream(
         .join(LocationUser, LocationRecord.user_id == LocationUser.id)
         .filter(LocationRecord.server_time > since_dt)
     )
+    # Production-test isolation: restrict to test-client authored recent rows
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+    if in_prod_test:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        q = q.filter(
+            or_(
+                LocationRecord.user_agent.ilike("%testclient%"),
+                LocationRecord.ip_address == "testclient",
+            )
+        ).filter(LocationRecord.server_time >= cutoff)
+
 
     if usernames and not all:
         q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
