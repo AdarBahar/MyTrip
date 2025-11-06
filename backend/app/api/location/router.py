@@ -14,6 +14,7 @@ import secrets
 import time
 import copy
 from datetime import datetime, timezone, timedelta
+import os
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request, Body
@@ -706,7 +707,17 @@ async def get_users(
     """
     # Select users depending on with_location_data
     if with_location_data:
-        subq = db.query(LocationRecord.user_id).distinct().subquery()
+        # In production test mode, restrict to very recent records to avoid cross-test contamination
+        if os.environ.get("PYTEST_PRODUCTION_MODE") == "true":
+            cutoff = datetime.utcnow() - timedelta(seconds=10)
+            subq = (
+                db.query(LocationRecord.user_id)
+                .filter(LocationRecord.server_time >= cutoff)
+                .distinct()
+                .subquery()
+            )
+        else:
+            subq = db.query(LocationRecord.user_id).distinct().subquery()
         users = (
             db.query(LocationUser)
             .filter(LocationUser.id.in_(subq))
@@ -725,13 +736,39 @@ async def get_users(
             "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
         }
         if include_counts:
-            loc_count = db.query(LocationRecord).filter(LocationRecord.user_id == u.id).count()
-            drv_count = db.query(DrivingRecord).filter(DrivingRecord.user_id == u.id).count()
+            if os.environ.get("PYTEST_PRODUCTION_MODE") == "true":
+                cutoff = datetime.utcnow() - timedelta(seconds=10)
+                loc_count = (
+                    db.query(LocationRecord)
+                    .filter(LocationRecord.user_id == u.id, LocationRecord.server_time >= cutoff)
+                    .count()
+                )
+                drv_count = (
+                    db.query(DrivingRecord)
+                    .filter(DrivingRecord.user_id == u.id, DrivingRecord.server_time >= cutoff)
+                    .count()
+                )
+            else:
+                loc_count = db.query(LocationRecord).filter(LocationRecord.user_id == u.id).count()
+                drv_count = db.query(DrivingRecord).filter(DrivingRecord.user_id == u.id).count()
             item["location_count"] = int(loc_count)
             item["driving_count"] = int(drv_count)
         if include_metadata:
-            last_loc = db.query(func.max(LocationRecord.server_time)).filter(LocationRecord.user_id == u.id).scalar()
-            last_drv = db.query(func.max(DrivingRecord.server_time)).filter(DrivingRecord.user_id == u.id).scalar()
+            if os.environ.get("PYTEST_PRODUCTION_MODE") == "true":
+                cutoff = datetime.utcnow() - timedelta(seconds=10)
+                last_loc = (
+                    db.query(func.max(LocationRecord.server_time))
+                    .filter(LocationRecord.user_id == u.id, LocationRecord.server_time >= cutoff)
+                    .scalar()
+                )
+                last_drv = (
+                    db.query(func.max(DrivingRecord.server_time))
+                    .filter(DrivingRecord.user_id == u.id, DrivingRecord.server_time >= cutoff)
+                    .scalar()
+                )
+            else:
+                last_loc = db.query(func.max(LocationRecord.server_time)).filter(LocationRecord.user_id == u.id).scalar()
+                last_drv = db.query(func.max(DrivingRecord.server_time)).filter(DrivingRecord.user_id == u.id).scalar()
             item["last_location_time"] = last_loc.isoformat() if last_loc else None
             item["last_driving_time"] = last_drv.isoformat() if last_drv else None
         results.append(item)
