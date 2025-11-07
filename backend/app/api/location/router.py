@@ -183,8 +183,16 @@ async def post_getloc(
         except Exception:
             client_time_iso = None
 
+    # Production-test isolation: mark requests authored by tests
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+    if in_prod_test and request.headers.get("x-api-token"):
+        # Tests call with X-API-Token; tag rows so queries can isolate them
+        ip_address = "testclient"
+        if not user_agent:
+            user_agent = "testclient"
 
     record = LocationRecord(
         user_id=user.id,
@@ -256,8 +264,15 @@ async def post_driving(
         device.last_seen = datetime.now(timezone.utc)
 
     # 3) Persist driving event
+    # Production-test isolation: mark requests authored by tests
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+    if in_prod_test and request.headers.get("x-api-token"):
+        ip_address = "testclient"
+        if not user_agent:
+            user_agent = "testclient"
 
     record = DrivingRecord(
         user_id=user.id,
@@ -334,8 +349,15 @@ async def post_batch_sync(
     else:
         device.last_seen = datetime.now(timezone.utc)
 
+    # Production-test isolation: mark requests authored by tests
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+    if in_prod_test and request.headers.get("x-api-token"):
+        ip_address = "testclient"
+        if not user_agent:
+            user_agent = "testclient"
 
     processed_location = 0
     processed_driving = 0
