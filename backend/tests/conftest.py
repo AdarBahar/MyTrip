@@ -156,21 +156,32 @@ def event_loop():
 
 @pytest.fixture(scope="function")
 def db_session():
-    """Create a fresh database session for each test"""
-    # Create all tables (main DB on test_engine, location DB on test_engine_location)
-    Base.metadata.create_all(bind=test_engine)
-    LocationBase.metadata.create_all(bind=test_engine_location)
+    """Create a database session for each test.
+    - In production test mode, use the real SessionLocal (no schema create/drop)
+    - In regular test mode, use in-memory SQLite and reset schema per test
+    """
+    if is_production_test_mode():
+        # Use the production DB session to keep API and direct-DB fixtures in sync
+        from app.core.database import SessionLocal  # import here to avoid circulars at import time
+        session = SessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+    else:
+        # Create all tables (main DB on test_engine, location DB on test_engine_location)
+        Base.metadata.create_all(bind=test_engine)
+        LocationBase.metadata.create_all(bind=test_engine_location)
 
-    # Create session (for main DB fixtures)
-    session = TestingSessionLocal()
-
-    try:
-        yield session
-    finally:
-        session.close()
-        # Drop all tables after test
-        LocationBase.metadata.drop_all(bind=test_engine_location)
-        Base.metadata.drop_all(bind=test_engine)
+        # Create session (for main DB fixtures)
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+            # Drop all tables after test
+            LocationBase.metadata.drop_all(bind=test_engine_location)
+            Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture(scope="function")
@@ -182,14 +193,27 @@ def client(db_session):
 
 @pytest.fixture
 def test_user(db_session):
-    """Create a test user"""
-    user = User(
-        email="test@example.com",
-        display_name="Test User"
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    """Create or get the test user.
+    - Production test mode: use a unique or configured email in the real DB
+    - Regular test mode: use an in-memory user
+    """
+    import os, time
+    if is_production_test_mode():
+        email = (
+            os.environ.get("TEST_USER_EMAIL")
+            or os.environ.get("TEST_EMAIL")
+            or os.environ.get("ADMIN_EMAIL")
+            or f"pytest+{int(time.time())}@test.local"
+        ).lower()
+    else:
+        email = "test@example.com"
+
+    user = db_session.query(User).filter(User.email == email).first()
+    if not user:
+        user = User(email=email, display_name="Test User")
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
     return user
 
 
@@ -201,21 +225,28 @@ def auth_headers(request, client: TestClient):
     """
     # Production mode: perform real login to get JWT
     if is_production_test_mode():
+        import os, time
         email = (
             os.environ.get("TEST_USER_EMAIL")
             or os.environ.get("TEST_EMAIL")
             or os.environ.get("ADMIN_EMAIL")
-            or "test@example.com"
         )
         password = (
             os.environ.get("TEST_USER_PASSWORD")
             or os.environ.get("TEST_PASSWORD")
             or os.environ.get("ADMIN_PASSWORD")
-            or "password123"
         )
+        # Generate a unique default email/password for this test run if not provided
+        if not email:
+            email = f"pytest+{int(time.time())}@test.local"
+            os.environ["TEST_USER_EMAIL"] = email
+        if not password:
+            password = "testpassword123"
+            os.environ.setdefault("TEST_USER_PASSWORD", password)
 
         login_payload = {"email": email, "password": password}
-        resp = client.post("/auth/login", json=login_payload)
+        # Use JWT login in production to get a real token
+        resp = client.post("/auth/jwt/login", json=login_payload)
         if resp.status_code == 200:
             token = resp.json().get("access_token")
             if token:
