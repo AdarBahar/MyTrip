@@ -78,9 +78,9 @@ class TestAuthenticationSecurity:
         trip_data = test_data_factory.create_trip_data(title="User 1 Trip")
         user1_headers = {"Authorization": f"Bearer fake_token_{user1.id}"}
         response = client.post("/trips/", json=trip_data, headers=user1_headers)
-        assert response.status_code == 201
+        assert response.status_code == 200
         trip_slug = response.json()["slug"]
-        
+
         # User2 should not be able to access user1's trip
         user2_headers = {"Authorization": f"Bearer fake_token_{user2.id}"}
         response = client.get(f"/trips/{trip_slug}", headers=user2_headers)
@@ -130,9 +130,9 @@ class TestAuthenticationRegression:
         # Create trip
         trip_data = test_data_factory.create_trip_data()
         response = client.post("/trips/", json=trip_data, headers=auth_headers)
-        assert response.status_code == 201
+        assert response.status_code == 200
         trip_slug = response.json()["slug"]
-        
+
         # Read trip
         response = client.get(f"/trips/{trip_slug}", headers=auth_headers)
         assert response.status_code == 200

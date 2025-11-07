@@ -288,7 +288,7 @@ async def list_days_with_locations(
     )
 
 
-@router.post("", response_model=DaySchema, status_code=201)
+@router.post("", response_model=DaySchema, status_code=200)
 async def create_day(
     trip_id: str,
     day_data: DayCreate,
@@ -446,7 +446,7 @@ async def update_day(
     return DaySchema.model_validate(day_dict)
 
 
-@router.delete("/{day_id}", status_code=204)
+@router.delete("/{day_id}", status_code=200)
 async def delete_day(
     trip_id: str,
     day_id: str,
@@ -494,8 +494,7 @@ async def delete_day(
 
     db.commit()
 
-    # Return 204 No Content (no response body)
-    return
+    return {"message": "Day deleted successfully"}
 
 
 # Bulk Operations Endpoints

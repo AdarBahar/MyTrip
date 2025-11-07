@@ -180,16 +180,26 @@ def datetime_validator(v: Any) -> Optional[datetime]:
 
 
 def date_validator(v: Any) -> Optional[date]:
-    """Pydantic field validator for date fields"""
+    """Pydantic field validator for date fields.
+
+    Behavior:
+    - None -> None (clears the date)
+    - date instance -> returned as-is
+    - string -> must be a valid ISO date (YYYY-MM-DD); invalid strings raise ValueError to trigger 422
+    - other types -> raise ValueError
+    """
     if v is None:
         return None
-    
+
     if isinstance(v, date):
         return v
-    
+
     if isinstance(v, str):
-        return DateTimeStandards.parse_date(v)
-    
+        parsed = DateTimeStandards.parse_date(v)
+        if parsed is None:
+            raise ValueError(f"Invalid date value: {v}")
+        return parsed
+
     raise ValueError(f"Invalid date value: {v}")
 
 

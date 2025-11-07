@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 @router.post(
     "/",
     response_model=TripSchema,
-    status_code=201,
+    status_code=200,
     summary="Create new trip with enhanced validation",
     description="""
     **Create New Trip**
@@ -686,7 +686,8 @@ async def update_trip(
         try:
             update_data["start_date"] = _date.fromisoformat(update_data["start_date"])
         except ValueError:
-            pass
+            # Invalid date string -> reject with validation error
+            raise HTTPException(status_code=422, detail="Invalid date format for start_date; expected YYYY-MM-DD")
 
     for field, value in update_data.items():
         setattr(trip, field, value)

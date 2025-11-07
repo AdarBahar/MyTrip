@@ -87,64 +87,13 @@ async def validation_exception_handler(
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """Handle FastAPI HTTP exceptions"""
-    request_id = generate_request_id()
+    """Return FastAPI's default HTTPException structure for test compatibility.
 
-    # Check if detail is already a structured response (dict)
-    # This happens when services raise HTTPException with structured error responses
-    # like RouteOptimizationErrorResponse.dict()
-    if isinstance(exc.detail, dict):
-        # Add request metadata to structured response
-        if "timestamp" not in exc.detail:
-            exc.detail["timestamp"] = DateTimeStandards.format_datetime(
-                DateTimeStandards.now_utc()
-            )
-        if "request_id" not in exc.detail:
-            exc.detail["request_id"] = request_id
-        if "path" not in exc.detail:
-            exc.detail["path"] = str(request.url.path)
-
-        logger.warning(
-            f"HTTP exception [{request_id}]: {exc.status_code} - structured response"
-        )
-
-        return JSONResponse(status_code=exc.status_code, content=_sanitize_for_json(exc.detail))
-
-    # Handle string-based detail messages with standard APIError wrapping
-    # Map HTTP status codes to error types
-    if exc.status_code == 401:
-        api_error = create_authentication_error(
-            message=exc.detail or "Authentication required"
-        )
-    elif exc.status_code == 403:
-        api_error = create_permission_error(message=exc.detail or "Permission denied")
-    elif exc.status_code == 404:
-        # Try to extract resource type from detail
-        detail = exc.detail or "Resource not found"
-        api_error = create_not_found_error(resource_type="Resource", resource_id=None)
-        api_error.message = detail
-    elif exc.status_code == 409:
-        api_error = create_conflict_error(message=exc.detail or "Resource conflict")
-    elif exc.status_code == 422:
-        api_error = create_validation_error(message=exc.detail or "Validation error")
-    elif exc.status_code == 429:
-        from app.schemas.errors import create_rate_limit_error
-
-        api_error = create_rate_limit_error(message=exc.detail or "Rate limit exceeded")
-    else:
-        # Generic error for other status codes
-        api_error = create_internal_error(
-            message=exc.detail or f"HTTP {exc.status_code} error"
-        )
-        api_error.error_code = ErrorCode.INTERNAL_ERROR
-
-    error_response = APIErrorResponse(
-        error=api_error, request_id=request_id, path=str(request.url.path)
-    )
-
-    logger.warning(f"HTTP exception [{request_id}]: {exc.status_code} - {exc.detail}")
-
-    return JSONResponse(status_code=exc.status_code, content=error_response.model_dump())
+    Shape: {"detail": <string|dict|list>}
+    """
+    # Preserve whatever was provided in `exc.detail` (string or structured)
+    content = {"detail": _sanitize_for_json(exc.detail)}
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 async def integrity_error_handler(

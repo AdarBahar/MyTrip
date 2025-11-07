@@ -84,6 +84,20 @@ class DayCreate(BaseModel):
         except Exception:
             return None
 
+    @field_validator("status", mode="before")
+    @classmethod
+    def coerce_status(cls, v):
+        """Accept case-insensitive string values (e.g., 'active') for DayStatus."""
+        if isinstance(v, str):
+            try:
+                return DayStatus(v)
+            except Exception:
+                try:
+                    return DayStatus(v.strip().upper())
+                except Exception:
+                    raise ValueError("Invalid day status")
+        return v
+
 
 class DayUpdate(BaseModel):
     """Schema for updating a day"""
@@ -111,6 +125,20 @@ class DayUpdate(BaseModel):
             return {"note": str(v)}
         except Exception:
             return None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def coerce_status(cls, v):
+        """Accept case-insensitive string values (e.g., 'active') for DayStatus."""
+        if isinstance(v, str):
+            try:
+                return DayStatus(v)
+            except Exception:
+                try:
+                    return DayStatus(v.strip().upper())
+                except Exception:
+                    raise ValueError("Invalid day status")
+        return v
 
 
 class Day(DayBase, BaseResponseWithSoftDelete):
@@ -153,6 +181,11 @@ class Day(DayBase, BaseResponseWithSoftDelete):
         description="Trip start date for calculated_date computation (ISO-8601: YYYY-MM-DD)",
         examples=["2024-07-15"],
     )
+
+    # Serialize enum status to lowercase string for API compatibility
+    @field_serializer("status")
+    def serialize_status(self, s: DayStatus) -> str:
+        return s.value.lower() if isinstance(s, DayStatus) else str(s).lower()
 
     @field_serializer("trip_start_date")
     def serialize_trip_start_date(self, d: Optional[Date]) -> Optional[str]:

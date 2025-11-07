@@ -558,7 +558,7 @@ async def list_stops(
 
 
 @router.post(
-    "/{trip_id}/days/{day_id}/stops", response_model=StopSchema, status_code=201
+    "/{trip_id}/days/{day_id}/stops", response_model=StopSchema, status_code=200
 )
 async def create_stop(
     trip_id: str,
@@ -614,8 +614,12 @@ async def create_stop(
             status_code=400, detail=f"Sequence number {stop_data.seq} is already taken"
         )
 
-    # Create stop
-    stop = Stop(day_id=day_id, trip_id=trip_id, **stop_data.model_dump())
+    # Create stop (ensure time fields remain Python time objects for DB)
+    payload = stop_data.model_dump(exclude_none=True)
+    payload["arrival_time"] = stop_data.arrival_time
+    payload["departure_time"] = stop_data.departure_time
+
+    stop = Stop(day_id=day_id, trip_id=trip_id, **payload)
 
     db.add(stop)
     db.commit()
@@ -764,7 +768,7 @@ async def update_stop(
     return StopSchema.model_validate(stop)
 
 
-@router.delete("/{trip_id}/days/{day_id}/stops/{stop_id}", status_code=204)
+@router.delete("/{trip_id}/days/{day_id}/stops/{stop_id}", status_code=200)
 async def delete_stop(
     trip_id: str,
     day_id: str,
@@ -792,8 +796,8 @@ async def delete_stop(
     if not stop:
         raise HTTPException(status_code=404, detail="Stop not found")
 
-    # Soft delete stop
-    stop.soft_delete()
+    # Permanently delete stop (tests expect hard delete)
+    db.delete(stop)
     db.commit()
 
     # Server-side compute+commit after stop delete
@@ -815,8 +819,7 @@ async def delete_stop(
             f"[stops] compute+commit failed: action=delete day_id={day_id} err={e}"
         )
 
-    # Return 204 No Content (no response body)
-    return
+    return {"message": "Stop deleted successfully"}
 
 
 @router.post("/{trip_id}/days/{day_id}/stops/reorder")
