@@ -122,7 +122,7 @@ update_code() {
         rm -rf "$tmpdir"
 
         log_success "Thin code update completed"
-    } else
+    else
         log_info "Updating code from Git repository (git pull)..."
         git pull origin main
         log_success "Code updated successfully"
