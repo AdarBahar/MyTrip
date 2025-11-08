@@ -225,8 +225,11 @@ sudo /opt/dayplanner/deployment/scripts/migrate.sh --dry-run
 ### Application Updates
 
 ```bash
-# Update from Git repository
+# Standard update (pulls repo as-is)
 sudo /opt/dayplanner/deployment/scripts/update.sh
+
+# Thin update (keeps production lean: excludes docs/tests per .deployignore, prunes frontend dev deps)
+sudo /opt/dayplanner/deployment/scripts/update.sh --thin
 
 # Rollback to previous version
 sudo /opt/dayplanner/deployment/scripts/update.sh --rollback
