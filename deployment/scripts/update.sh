@@ -46,8 +46,15 @@ check_root() {
 stop_services() {
     log_info "Stopping services..."
 
-    systemctl stop dayplanner-frontend.service || true
-    systemctl stop dayplanner-backend.service || true
+    if [ "$BACKEND_ONLY" = "1" ]; then
+        # Backend-only: only stop backend to avoid touching frontend
+        systemctl stop dayplanner-backend.service || true
+        log_info "Backend-only mode: not stopping frontend service"
+    else
+        # Full deploy: stop both services
+        systemctl stop dayplanner-frontend.service || true
+        systemctl stop dayplanner-backend.service || true
+    fi
 
     log_success "Services stopped"
 }
@@ -209,19 +216,19 @@ run_migrations() {
 
 # Start services
 start_services() {
-    log_info "Starting services..."
+    log_info "Starting/restarting services..."
 
-    # Start backend first
-    systemctl start dayplanner-backend.service
+    # Restart backend first (idempotent whether running or not)
+    systemctl restart dayplanner-backend.service
 
     # Wait for backend to be ready
     sleep 10
 
-    # Start frontend unless in backend-only mode
+    # Restart frontend unless in backend-only mode
     if [ "$BACKEND_ONLY" != "1" ]; then
-        systemctl start dayplanner-frontend.service
+        systemctl restart dayplanner-frontend.service
     else
-        log_info "Skipping frontend service start (backend-only mode)"
+        log_info "Skipping frontend service restart (backend-only mode)"
     fi
 
     # Check status
@@ -321,13 +328,13 @@ rollback() {
         # Restore ownership
         chown -R www-data:www-data "$APP_DIR"
 
-        # Start services
-        systemctl start dayplanner-backend.service
+        # Restart services
+        systemctl restart dayplanner-backend.service
         sleep 10
         if [ "$BACKEND_ONLY" != "1" ]; then
-            systemctl start dayplanner-frontend.service
+            systemctl restart dayplanner-frontend.service
         else
-            log_info "Skipping frontend service start (backend-only mode)"
+            log_info "Skipping frontend service restart (backend-only mode)"
         fi
 
         log_success "Rollback completed"
