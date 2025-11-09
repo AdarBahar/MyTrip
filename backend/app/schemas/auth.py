@@ -14,8 +14,12 @@ class UserProfile(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """Login request schema (email-only for dev/test compatibility)"""
+    """Login request schema
+    - Dev/Test: email-only is accepted (password optional)
+    - Production: requires email + password and client Authorization header (APP_SECRET)
+    """
     email: EmailStr
+    password: Optional[str] = None
 
 
 class LoginResponse(BaseModel):
