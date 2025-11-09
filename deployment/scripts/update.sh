@@ -46,12 +46,12 @@ check_root() {
 stop_services() {
     log_info "Stopping services..."
 
-    if [ "$BACKEND_ONLY" = "1" ]; then
+    if [ "$BACKEND_ONLY" = "1" ] && [ "${DISABLE_FRONTEND_SERVICE:-0}" != "1" ]; then
         # Backend-only: only stop backend to avoid touching frontend
         systemctl stop dayplanner-backend.service || true
         log_info "Backend-only mode: not stopping frontend service"
     else
-        # Full deploy: stop both services
+        # Full deploy or thin-backend (disable frontend): stop both services
         systemctl stop dayplanner-frontend.service || true
         systemctl stop dayplanner-backend.service || true
     fi
@@ -351,6 +351,14 @@ main() {
     trap rollback ERR
 
     check_root
+
+    # Determine if we should disable the frontend service (thin-backend mode)
+    DISABLE_FRONTEND_SERVICE=0
+    if [ "$THIN_DEPLOY" = "1" ] && [ "$BACKEND_ONLY" = "1" ]; then
+        DISABLE_FRONTEND_SERVICE=1
+        log_info "Thin-backend mode: frontend service will be disabled"
+    fi
+
     stop_services
     backup_current
     update_code
@@ -364,6 +372,12 @@ main() {
     # Optional thin cleanup before starting services
     if [ "$THIN_DEPLOY" = "1" ]; then
         thin_cleanup
+    fi
+
+    # Disable frontend service if thin-backend mode
+    if [ "${DISABLE_FRONTEND_SERVICE:-0}" = "1" ]; then
+        log_info "Disabling frontend service (thin-backend mode)"
+        systemctl disable dayplanner-frontend.service || true
     fi
 
     start_services
@@ -400,7 +414,7 @@ case "${1:-}" in
         echo "Usage: $0 [--thin] [--backend-only] [--thin-backend] [--rollback] [--help]"
         echo "  --thin           Thin-deploy cleanup (remove docs/tests/MD files, prune dev deps)"
         echo "  --backend-only   Update only backend (skip frontend sync/build/start; no frontend health check)"
-        echo "  --thin-backend   Thin deploy + backend-only (exclude frontend from rsync; remove frontend dir)"
+        echo "  --thin-backend   Thin deploy + backend-only (exclude frontend from rsync; remove frontend dir; disable frontend service)"
         echo "  --rollback       Rollback to the previous deployment"
         echo "  --help           Show this help message"
         ;;
