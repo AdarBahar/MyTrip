@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.config import settings
 from app.models.user import User, UserStatus
 from app.schemas.auth import LoginRequest, LoginResponse, UserProfile, AppLoginRequest, AppLoginResponse
 
@@ -20,10 +21,15 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """
-    Simple email-only login used for development/tests.
-    - Creates the user if missing
-    - Returns a fake token: "fake_token_<userId>"
+    Development-only login (email-only) for local testing.
+    NOTE: Disabled in production. Use /auth/app-login (boolean) or /auth/jwt/login (JWT).
     """
+    if settings.APP_ENV.lower() == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="/auth/login is disabled in production. Use /auth/app-login or /auth/jwt/login."
+        )
+
     import re
     from app.core.jwt import create_fake_token_for_testing as create_fake_token
 
