@@ -231,6 +231,12 @@ sudo /opt/dayplanner/deployment/scripts/update.sh
 # Thin update (keeps production lean: excludes docs/tests per .deployignore, prunes frontend dev deps)
 sudo /opt/dayplanner/deployment/scripts/update.sh --thin
 
+# Backend-only update (skip frontend sync/build/start; no frontend health check)
+sudo /opt/dayplanner/deployment/scripts/update.sh --backend-only
+
+# Thin backend-only (exclude frontend from rsync; remove any existing frontend dir)
+sudo /opt/dayplanner/deployment/scripts/update.sh --thin-backend
+
 # Rollback to previous version
 sudo /opt/dayplanner/deployment/scripts/update.sh --rollback
 ```
