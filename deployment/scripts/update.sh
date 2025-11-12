@@ -46,8 +46,15 @@ check_root() {
 stop_services() {
     log_info "Stopping services..."
 
-    systemctl stop dayplanner-frontend.service || true
-    systemctl stop dayplanner-backend.service || true
+    if [ "$BACKEND_ONLY" = "1" ] && [ "${DISABLE_FRONTEND_SERVICE:-0}" != "1" ]; then
+        # Backend-only: only stop backend to avoid touching frontend
+        systemctl stop dayplanner-backend.service || true
+        log_info "Backend-only mode: not stopping frontend service"
+    else
+        # Full deploy or thin-backend (disable frontend): stop both services
+        systemctl stop dayplanner-frontend.service || true
+        systemctl stop dayplanner-backend.service || true
+    fi
 
     log_success "Services stopped"
 }
@@ -107,13 +114,23 @@ update_code() {
 
         # Rsync only necessary files into APP_DIR, preserving venv/node_modules and excluding dev files
         log_info "Syncing files to $APP_DIR with exclusions (.deployignore)..."
+        # Optionally exclude the frontend entirely in backend-only mode
+        rsync_exclude_frontend=""
+        if [ "$BACKEND_ONLY" = "1" ]; then
+            rsync_exclude_frontend="--exclude=frontend/"
+        fi
         rsync -a --delete \
             --exclude-from="$tmpdir/.deployignore" \
-            --exclude '.env.production' \
-            --exclude 'backend/venv/' \
-            --exclude 'frontend/node_modules/' \
-            --exclude '.git/' \
+            --exclude='.env.production' \
+            --exclude='backend/venv/' \
+            --exclude='frontend/node_modules/' \
+            --exclude='.git/' \
+            $rsync_exclude_frontend \
             "$tmpdir/" "$APP_DIR/"
+        # If backend-only, ensure any existing frontend is removed
+        if [ "$BACKEND_ONLY" = "1" ]; then
+            rm -rf "$APP_DIR/frontend"
+        fi
 
         # Preserve ownership
         chown -R www-data:www-data "$APP_DIR"
@@ -122,7 +139,7 @@ update_code() {
         rm -rf "$tmpdir"
 
         log_success "Thin code update completed"
-    } else
+    else
         log_info "Updating code from Git repository (git pull)..."
         git pull origin main
         log_success "Code updated successfully"
@@ -199,20 +216,26 @@ run_migrations() {
 
 # Start services
 start_services() {
-    log_info "Starting services..."
+    log_info "Starting/restarting services..."
 
-    # Start backend first
-    systemctl start dayplanner-backend.service
+    # Restart backend first (idempotent whether running or not)
+    systemctl restart dayplanner-backend.service
 
     # Wait for backend to be ready
     sleep 10
 
-    # Start frontend
-    systemctl start dayplanner-frontend.service
+    # Restart frontend unless in backend-only mode
+    if [ "$BACKEND_ONLY" != "1" ]; then
+        systemctl restart dayplanner-frontend.service
+    else
+        log_info "Skipping frontend service restart (backend-only mode)"
+    fi
 
     # Check status
     systemctl status dayplanner-backend.service --no-pager
-    systemctl status dayplanner-frontend.service --no-pager
+    if [ "$BACKEND_ONLY" != "1" ]; then
+        systemctl status dayplanner-frontend.service --no-pager
+    fi
 
     log_success "Services started"
 }
@@ -232,12 +255,16 @@ health_check() {
         return 1
     fi
 
-    # Check frontend
-    if curl -f http://localhost:3500 > /dev/null 2>&1; then
-        log_success "Frontend health check passed"
+    # Check frontend (skip in backend-only mode)
+    if [ "$BACKEND_ONLY" != "1" ]; then
+        if curl -f http://localhost:3500 > /dev/null 2>&1; then
+            log_success "Frontend health check passed"
+        else
+            log_error "Frontend health check failed"
+            return 1
+        fi
     else
-        log_error "Frontend health check failed"
-        return 1
+        log_info "Skipping frontend health check (backend-only mode)"
     fi
 
     log_success "All health checks passed"
@@ -272,6 +299,11 @@ thin_cleanup() {
     find "$APP_DIR/backend" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
     find "$APP_DIR/backend" -type f -name "*.pyc" -delete 2>/dev/null || true
 
+    # If backend-only deployment, remove frontend entirely
+    if [ "$BACKEND_ONLY" = "1" ]; then
+        rm -rf "$APP_DIR/frontend" 2>/dev/null || true
+    fi
+
     log_success "Thin cleanup complete"
 }
 
@@ -296,10 +328,14 @@ rollback() {
         # Restore ownership
         chown -R www-data:www-data "$APP_DIR"
 
-        # Start services
-        systemctl start dayplanner-backend.service
+        # Restart services
+        systemctl restart dayplanner-backend.service
         sleep 10
-        systemctl start dayplanner-frontend.service
+        if [ "$BACKEND_ONLY" != "1" ]; then
+            systemctl restart dayplanner-frontend.service
+        else
+            log_info "Skipping frontend service restart (backend-only mode)"
+        fi
 
         log_success "Rollback completed"
     else
@@ -315,15 +351,33 @@ main() {
     trap rollback ERR
 
     check_root
+
+    # Determine if we should disable the frontend service (thin-backend mode)
+    DISABLE_FRONTEND_SERVICE=0
+    if [ "$THIN_DEPLOY" = "1" ] && [ "$BACKEND_ONLY" = "1" ]; then
+        DISABLE_FRONTEND_SERVICE=1
+        log_info "Thin-backend mode: frontend service will be disabled"
+    fi
+
     stop_services
     backup_current
     update_code
     update_backend
-    update_frontend
+    if [ "$BACKEND_ONLY" != "1" ]; then
+        update_frontend
+    else
+        log_info "Skipping frontend update (backend-only mode)"
+    fi
     run_migrations
     # Optional thin cleanup before starting services
     if [ "$THIN_DEPLOY" = "1" ]; then
         thin_cleanup
+    fi
+
+    # Disable frontend service if thin-backend mode
+    if [ "${DISABLE_FRONTEND_SERVICE:-0}" = "1" ]; then
+        log_info "Disabling frontend service (thin-backend mode)"
+        systemctl disable dayplanner-frontend.service || true
     fi
 
     start_services
@@ -347,11 +401,22 @@ case "${1:-}" in
         THIN_DEPLOY=1
         main
         ;;
+    --backend-only)
+        BACKEND_ONLY=1
+        main
+        ;;
+    --thin-backend)
+        THIN_DEPLOY=1
+        BACKEND_ONLY=1
+        main
+        ;;
     --help)
-        echo "Usage: $0 [--thin] [--rollback] [--help]"
-        echo "  --thin      Apply thin-deploy cleanup (remove docs/tests/MD files, prune dev deps)"
-        echo "  --rollback  Rollback to the previous deployment"
-        echo "  --help      Show this help message"
+        echo "Usage: $0 [--thin] [--backend-only] [--thin-backend] [--rollback] [--help]"
+        echo "  --thin           Thin-deploy cleanup (remove docs/tests/MD files, prune dev deps)"
+        echo "  --backend-only   Update only backend (skip frontend sync/build/start; no frontend health check)"
+        echo "  --thin-backend   Thin deploy + backend-only (exclude frontend from rsync; remove frontend dir; disable frontend service)"
+        echo "  --rollback       Rollback to the previous deployment"
+        echo "  --help           Show this help message"
         ;;
     "")
         main

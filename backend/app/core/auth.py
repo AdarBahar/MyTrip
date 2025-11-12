@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.user import User
 
 
@@ -47,19 +48,23 @@ async def get_current_user(
         extract_user_id_from_fake_token,
     )
 
-    # Handle fake tokens for backward compatibility
-    if is_fake_token(token):
-        user_id = extract_user_id_from_fake_token(token)
+    # Production: require valid JWT; no fake token fallback
+    if settings.APP_ENV.lower() == "production":
+        user_id = get_user_id_from_token(token)
     else:
-        # Handle JWT tokens
-        try:
-            user_id = get_user_id_from_token(token)
-        except HTTPException:
-            # If JWT validation fails, try fake token as fallback
-            if token.startswith("fake_token_"):
-                user_id = extract_user_id_from_fake_token(token)
-            else:
-                raise
+        # Dev/test: support fake token fallback
+        if is_fake_token(token):
+            user_id = extract_user_id_from_fake_token(token)
+        else:
+            # Handle JWT tokens
+            try:
+                user_id = get_user_id_from_token(token)
+            except HTTPException:
+                # If JWT validation fails, try fake token as fallback
+                if token.startswith("fake_token_"):
+                    user_id = extract_user_id_from_fake_token(token)
+                else:
+                    raise
 
     # Get user from database
     user = db.query(User).filter(User.id == user_id).first()
@@ -93,18 +98,24 @@ async def get_current_user_optional(
         if scheme != "Bearer":
             return None
 
-        # Handle both fake tokens and JWT
-        if is_fake_token(token):
-            user_id = extract_user_id_from_fake_token(token)
-        else:
+        if settings.APP_ENV.lower() == "production":
             try:
                 user_id = get_user_id_from_token(token)
             except HTTPException:
-                # If JWT validation fails, try fake token as fallback
-                if token.startswith("fake_token_"):
-                    user_id = extract_user_id_from_fake_token(token)
-                else:
-                    return None
+                return None
+        else:
+            # Handle both fake tokens and JWT in dev/test
+            if is_fake_token(token):
+                user_id = extract_user_id_from_fake_token(token)
+            else:
+                try:
+                    user_id = get_user_id_from_token(token)
+                except HTTPException:
+                    # If JWT validation fails, try fake token as fallback
+                    if token.startswith("fake_token_"):
+                        user_id = extract_user_id_from_fake_token(token)
+                    else:
+                        return None
 
         user = db.query(User).filter(User.id == user_id).first()
 
@@ -153,17 +164,21 @@ async def get_location_auth(
     if authorization:
         # Parse bearer token from header
         token = await get_token_from_header(authorization)
-        # Handle both fake tokens and JWT
-        if is_fake_token(token):
-            user_id = extract_user_id_from_fake_token(token)
+        if settings.APP_ENV.lower() == "production":
+            # Production: require valid JWT token
+            user_id = get_user_id_from_token(token)
         else:
-            try:
-                user_id = get_user_id_from_token(token)
-            except HTTPException:
-                if token.startswith("fake_token_"):
-                    user_id = extract_user_id_from_fake_token(token)
-                else:
-                    raise
+            # Dev/test: handle both fake tokens and JWT
+            if is_fake_token(token):
+                user_id = extract_user_id_from_fake_token(token)
+            else:
+                try:
+                    user_id = get_user_id_from_token(token)
+                except HTTPException:
+                    if token.startswith("fake_token_"):
+                        user_id = extract_user_id_from_fake_token(token)
+                    else:
+                        raise
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(

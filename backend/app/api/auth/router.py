@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.config import settings
 from app.models.user import User, UserStatus
 from app.schemas.auth import LoginRequest, LoginResponse, UserProfile, AppLoginRequest, AppLoginResponse
 
@@ -17,13 +18,77 @@ security = HTTPBearer()
 @router.post("/login", response_model=LoginResponse)
 async def login(
     login_data: LoginRequest,
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """
-    Simple email-only login used for development/tests.
-    - Creates the user if missing
-    - Returns a fake token: "fake_token_<userId>"
+    Login endpoint:
+    - Production: requires Authorization: Bearer <APP_SECRET> AND valid email/password.
+                  Returns a real JWT access token (and refresh token).
+    - Dev/Test: email-only login for convenience (auto-creates user, returns fake token).
     """
+    # Production flow: guarded by APP_SECRET header and email/password verification
+    if settings.APP_ENV.lower() == "production":
+        # Validate client Authorization header matches APP_SECRET
+        if not authorization:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization header missing"
+            )
+        try:
+            scheme, token = authorization.split()
+            if scheme != "Bearer":
+                raise ValueError("invalid scheme")
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format. Use 'Bearer <token>'"
+            )
+        if token != settings.APP_SECRET:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid client authorization"
+            )
+
+        # Require email/password auth
+        from app.core.jwt import (
+            create_access_token,
+            create_refresh_token,
+            verify_password,
+            ACCESS_TOKEN_EXPIRE_MINUTES,
+        )
+
+        email = login_data.email.lower()
+        user = db.query(User).filter(User.email == email).first()
+        if not user or user.status != UserStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        if not (getattr(user, "password_hash", None) and login_data.password and verify_password(login_data.password, user.password_hash)):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+
+        access_token = create_access_token(data={"sub": user.id})
+        refresh_token = create_refresh_token(data={"sub": user.id})
+
+        return LoginResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            user=UserProfile(
+                id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+                status=user.status.value,
+            ),
+        )
+
+    # Dev/Test fallback: email-only fake-token login for local testing
     import re
     from app.core.jwt import create_fake_token_for_testing as create_fake_token
 

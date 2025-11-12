@@ -14,7 +14,7 @@ from app.core.jwt import (
     get_password_hash,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from app.models.user import User
+from app.models.user import User, UserStatus
 from app.schemas.auth import (
     AppLoginRequest,
     LoginResponse,
@@ -34,35 +34,40 @@ async def jwt_login(
     """
     Authenticate user with email/password and return JWT tokens
     """
-    # Find user by email
-    user = db.query(User).filter(User.email == login_data.email).first()
-    
+    # Normalize email and find user
+    email = login_data.email.lower()
+    user = db.query(User).filter(User.email == email).first()
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
-    
-    # For now, we'll accept any password since we don't have password hashing yet
-    # This will be enhanced when we add proper password management
-    if login_data.password is None:
+
+    # Check account status
+    if user.status != UserStatus.ACTIVE:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password is required for JWT authentication",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account is disabled",
         )
-    
-    # TODO: Implement proper password verification
-    # For now, accept any non-empty password
-    if not login_data.password.strip():
+
+    # Require and verify password against stored hash
+    if not getattr(user, "password_hash", None):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
-    
+
+    if not (login_data.password and verify_password(login_data.password, user.password_hash)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
     # Create tokens
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_refresh_token(data={"sub": user.id})
-    
+
     return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -102,12 +107,12 @@ async def jwt_refresh_token(
             detail="User not found",
         )
     
-    if hasattr(user, 'is_active') and not user.is_active:
+    if user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account is disabled",
         )
-    
+
     # Create new access token
     access_token = create_access_token(data={"sub": user.id})
     
@@ -158,7 +163,7 @@ async def jwt_validate_token(
                 id=user.id,
                 email=user.email,
                 display_name=user.display_name,
-                status=user.status
+                status=user.status.value
             ),
             "expires_at": payload.get("exp")
         }
