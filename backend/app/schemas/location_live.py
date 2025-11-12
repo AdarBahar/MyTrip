@@ -1,34 +1,55 @@
-from typing import List, Optional
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
 # Shared filter shapes
 class LiveCommonFilters(BaseModel):
-    usernames: List[str] = Field(default_factory=list, description="Resolved usernames filter")
-    device_ids: List[str] = Field(default_factory=list, description="Resolved device IDs filter")
+    usernames: list[str] = Field(
+        default_factory=list, description="Resolved usernames filter"
+    )
+    device_ids: list[str] = Field(
+        default_factory=list, description="Resolved device IDs filter"
+    )
     all: bool = Field(False, description="If true, includes all users/devices")
 
 
 class LiveStreamFilters(LiveCommonFilters):
-    since: Optional[int] = Field(None, description="Cursor timestamp in milliseconds used for this query")
+    since: Optional[int] = Field(
+        None, description="Cursor timestamp in milliseconds used for this query"
+    )
 
 
 # Data items
 class LivePoint(BaseModel):
-    device_id: Optional[str] = Field(None, description="Device identifier for the point")
+    device_id: Optional[str] = Field(
+        None, description="Device identifier for the point"
+    )
     user_id: Optional[int] = Field(None, description="User ID owning the device")
     username: Optional[str] = Field(None, description="Username owning the device")
     display_name: Optional[str] = Field(None, description="User display name")
     latitude: Optional[float] = Field(None, description="Latitude in decimal degrees")
     longitude: Optional[float] = Field(None, description="Longitude in decimal degrees")
-    accuracy: Optional[float] = Field(None, description="Accuracy in meters if provided")
-    altitude: Optional[float] = Field(None, description="Altitude in meters if provided")
+    accuracy: Optional[float] = Field(
+        None, description="Accuracy in meters if provided"
+    )
+    altitude: Optional[float] = Field(
+        None, description="Altitude in meters if provided"
+    )
     speed: Optional[float] = Field(None, description="Speed in m/s if provided")
     bearing: Optional[float] = Field(None, description="Bearing in degrees if provided")
-    battery_level: Optional[float] = Field(None, description="Battery level percentage if provided")
-    recorded_at: Optional[str] = Field(None, description="Client timestamp ISO if provided")
-    server_time: Optional[str] = Field(None, description="Server-side timestamp ISO when persisted")
-    server_timestamp: Optional[int] = Field(None, description="Server-side timestamp in ms since epoch")
+    battery_level: Optional[float] = Field(
+        None, description="Battery level percentage if provided"
+    )
+    recorded_at: Optional[str] = Field(
+        None, description="Client timestamp ISO if provided"
+    )
+    server_time: Optional[str] = Field(
+        None, description="Server-side timestamp ISO when persisted"
+    )
+    server_timestamp: Optional[int] = Field(
+        None, description="Server-side timestamp in ms since epoch"
+    )
 
 
 class LiveLatestItem(BaseModel):
@@ -53,7 +74,9 @@ class LiveLatestItem(BaseModel):
 
 # Responses
 class LiveHistoryResponse(BaseModel):
-    points: List[LivePoint] = Field(default_factory=list, description="History points ordered DESC by time")
+    points: list[LivePoint] = Field(
+        default_factory=list, description="History points ordered DESC by time"
+    )
     count: int = Field(..., description="Number of points returned in this page")
     total: int = Field(..., description="Total number of points satisfying the filter")
     limit: int = Field(..., description="Requested page size")
@@ -65,7 +88,9 @@ class LiveHistoryResponse(BaseModel):
 
 
 class LiveLatestResponse(BaseModel):
-    locations: List[LiveLatestItem] = Field(default_factory=list, description="Latest location per device")
+    locations: list[LiveLatestItem] = Field(
+        default_factory=list, description="Latest location per device"
+    )
     count: int = Field(..., description="Number of devices returned")
     max_age: int = Field(..., description="Max age filter applied in seconds")
     filters: LiveCommonFilters
@@ -74,9 +99,15 @@ class LiveLatestResponse(BaseModel):
 
 
 class LiveStreamResponse(BaseModel):
-    points: List[LivePoint] = Field(default_factory=list, description="Streamed points newer than cursor")
-    cursor: int = Field(..., description="New cursor (ms since epoch) up to the newest point returned")
-    has_more: bool = Field(..., description="True if there may be more data beyond the limit")
+    points: list[LivePoint] = Field(
+        default_factory=list, description="Streamed points newer than cursor"
+    )
+    cursor: int = Field(
+        ..., description="New cursor (ms since epoch) up to the newest point returned"
+    )
+    has_more: bool = Field(
+        ..., description="True if there may be more data beyond the limit"
+    )
     count: int = Field(..., description="Number of points returned in this response")
     session_id: Optional[str] = Field(None, description="Session ID if provided")
     filters: LiveStreamFilters
@@ -85,8 +116,12 @@ class LiveStreamResponse(BaseModel):
 
 # Session models
 class LiveSessionCreateRequest(BaseModel):
-    device_ids: Optional[List[str]] = Field(default_factory=list, description="Optional device allowlist for the session")
-    duration: Optional[int] = Field(3600, ge=60, le=86400, description="Session duration in seconds (60..86400)")
+    device_ids: Optional[list[str]] = Field(
+        default_factory=list, description="Optional device allowlist for the session"
+    )
+    duration: Optional[int] = Field(
+        3600, ge=60, le=86400, description="Session duration in seconds (60..86400)"
+    )
 
 
 class LiveSessionCreateResponse(BaseModel):
@@ -94,11 +129,17 @@ class LiveSessionCreateResponse(BaseModel):
     session_token: str = Field(..., description="Opaque token for session auth")
     expires_at: str = Field(..., description="Session expiry time (ISO)")
     duration: int = Field(..., description="Session duration in seconds")
-    stream_url: str = Field(..., description="Relative stream URL including the session_id as query parameter")
-    device_ids: List[str] = Field(default_factory=list, description="Device allowlist")
+    stream_url: str = Field(
+        ...,
+        description="Relative stream URL for JSON polling stream including the session_id as query parameter",
+    )
+    stream_url_sse: str = Field(
+        ...,
+        description="Relative SSE stream URL including the session_id as query parameter",
+    )
+    device_ids: list[str] = Field(default_factory=list, description="Device allowlist")
 
 
 class LiveSessionRevokeResponse(BaseModel):
     session_id: str = Field(..., description="Session identifier")
     revoked: bool = Field(..., description="Whether the session was revoked")
-

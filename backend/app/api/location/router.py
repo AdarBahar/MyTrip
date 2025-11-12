@@ -9,22 +9,34 @@ Legacy-compatible endpoints added:
 - POST /location/api/getloc
 """
 
+import copy
 import logging
+import os
 import secrets
 import time
-import copy
-from datetime import datetime, timezone, timedelta
-import os
-from typing import Optional, List
+from datetime import UTC, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Request, Body
-from sqlalchemy import text, func, or_
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, get_location_auth
 from app.core.location_database import get_location_db
+from app.models.location_records import (
+    Device,
+    DrivingRecord,
+    LocationRecord,
+    LocationUser,
+)
 from app.models.user import User
-from app.models.location_records import LocationUser, Device, LocationRecord, DrivingRecord
+from app.schemas.batch_sync import (
+    BatchSyncRequest,
+    BatchSyncResponse,
+    ProcessingResults,
+)
+from app.schemas.driving_ingest import DrivingSubmitRequest, DrivingSubmitResponse
 from app.schemas.location import (
     LocationCreate,
     LocationHealthResponse,
@@ -33,21 +45,15 @@ from app.schemas.location import (
     LocationUpdate,
 )
 from app.schemas.location_ingest import LocationSubmitRequest, LocationSubmitResponse
-from app.schemas.driving_ingest import DrivingSubmitRequest, DrivingSubmitResponse
-from app.schemas.batch_sync import (
-    BatchSyncRequest,
-    BatchSyncResponse,
-    ProcessingResults,
-)
-from app.schemas.location_stats import StatsResponse, StatsRequest
 from app.schemas.location_live import (
     LiveHistoryResponse,
     LiveLatestResponse,
-    LiveStreamResponse,
     LiveSessionCreateRequest,
     LiveSessionCreateResponse,
     LiveSessionRevokeResponse,
+    LiveStreamResponse,
 )
+from app.schemas.location_stats import StatsRequest, StatsResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -55,12 +61,17 @@ logger = logging.getLogger(__name__)
 # --- In-memory TTL cache for stats (mirrors PHP StatsCache semantics) ---
 _stats_cache_store: dict[str, dict] = {}
 
+
 def _stats_ttl_for_timeframe(tf: str) -> int:
     # 60s for recent, 300s for historical
     return 60 if tf in {"today", "last_24h"} else 300
 
-def _stats_cache_key(device_key: str, timeframe: str, start_dt: datetime, end_dt: datetime) -> str:
+
+def _stats_cache_key(
+    device_key: str, timeframe: str, start_dt: datetime, end_dt: datetime
+) -> str:
     return f"stats:{device_key}:{timeframe}:{start_dt.isoformat()}:{end_dt.isoformat()}"
+
 
 def _stats_cache_get(key: str) -> Optional[dict]:
     entry = _stats_cache_store.get(key)
@@ -79,6 +90,7 @@ def _stats_cache_get(key: str) -> Optional[dict]:
     except Exception:
         pass
     return data
+
 
 def _stats_cache_set(key: str, data: dict, ttl: int) -> None:
     # store a copy with cached=false and expiration
@@ -105,9 +117,7 @@ async def location_health(db: Session = Depends(get_location_db)):
     """
     try:
         # Test database connection by executing a simple query (MySQL-specific functions may fail on SQLite)
-        result = db.execute(
-            text("SELECT 1 as test")
-        ).fetchone()
+        result = db.execute(text("SELECT 1 as test")).fetchone()
 
         # Get current UTC timestamp
         current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -172,13 +182,15 @@ async def post_getloc(
         db.add(device)
         db.flush()
     else:
-        device.last_seen = datetime.now(timezone.utc)
+        device.last_seen = datetime.now(UTC)
 
     # 3) Prepare record fields
     client_time_iso = None
     if payload.timestamp is not None:
         try:
-            client_dt = datetime.fromtimestamp(payload.timestamp / 1000.0, tz=timezone.utc)
+            client_dt = datetime.fromtimestamp(
+                payload.timestamp / 1000.0, tz=UTC
+            )
             client_time_iso = client_dt.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             client_time_iso = None
@@ -227,7 +239,6 @@ async def post_getloc(
     return response
 
 
-
 # Legacy-compatible driving events endpoint
 @router.post("/api/driving", response_model=DrivingSubmitResponse)
 async def post_driving(
@@ -261,7 +272,7 @@ async def post_driving(
         db.add(device)
         db.flush()
     else:
-        device.last_seen = datetime.now(timezone.utc)
+        device.last_seen = datetime.now(UTC)
 
     # 3) Persist driving event
     # Production-test isolation: mark requests authored by tests
@@ -277,12 +288,18 @@ async def post_driving(
     record = DrivingRecord(
         user_id=user.id,
         device_id=payload.id,
-        event_type=("driving_" + payload.event if payload.event in {"start", "data", "stop"} else payload.event),  # store DB-compatible form
+        event_type=(
+            "driving_" + payload.event
+            if payload.event in {"start", "data", "stop"}
+            else payload.event
+        ),  # store DB-compatible form
         client_time=payload.timestamp,
         latitude=payload.location.latitude,
         longitude=payload.location.longitude,
         accuracy=payload.location.accuracy,
-        altitude=payload.altitude if payload.altitude is not None else payload.location.altitude,
+        altitude=payload.altitude
+        if payload.altitude is not None
+        else payload.location.altitude,
         speed=payload.speed,
         bearing=payload.bearing,
         trip_id=payload.trip_id,
@@ -315,7 +332,6 @@ async def post_driving(
     return response
 
 
-
 # Legacy-compatible batch synchronization endpoint
 @router.post("/api/batch-sync", response_model=BatchSyncResponse)
 async def post_batch_sync(
@@ -331,7 +347,11 @@ async def post_batch_sync(
       - Records array of typed items: {type: location|driving, ...}
     """
     # Upsert user and device once for the batch
-    user = db.query(LocationUser).filter(LocationUser.username == payload.user_name).first()
+    user = (
+        db.query(LocationUser)
+        .filter(LocationUser.username == payload.user_name)
+        .first()
+    )
     if not user:
         user = LocationUser(username=payload.user_name, display_name=payload.user_name)
         db.add(user)
@@ -347,7 +367,7 @@ async def post_batch_sync(
         db.add(device)
         db.flush()
     else:
-        device.last_seen = datetime.now(timezone.utc)
+        device.last_seen = datetime.now(UTC)
 
     # Production-test isolation: mark requests authored by tests
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
@@ -376,12 +396,14 @@ async def post_batch_sync(
                 lon = rec_dict.get("longitude")
                 ts = rec_dict.get("timestamp")
                 if lat is None or lon is None or ts is None:
-                    raise ValueError("Missing latitude/longitude/timestamp for location record")
+                    raise ValueError(
+                        "Missing latitude/longitude/timestamp for location record"
+                    )
 
                 # Convert timestamp (ms) to ISO if possible
                 client_time_iso = None
                 try:
-                    client_dt = datetime.fromtimestamp(ts / 1000.0, tz=timezone.utc)
+                    client_dt = datetime.fromtimestamp(ts / 1000.0, tz=UTC)
                     client_time_iso = client_dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     client_time_iso = None
@@ -413,7 +435,11 @@ async def post_batch_sync(
                 # Normalize event and validate
                 event_short = rec_dict.get("event")
                 if not event_short and rec_dict.get("event_type"):
-                    mapping = {"driving_start": "start", "driving_data": "data", "driving_stop": "stop"}
+                    mapping = {
+                        "driving_start": "start",
+                        "driving_data": "data",
+                        "driving_stop": "stop",
+                    }
                     event_short = mapping.get(rec_dict.get("event_type"))
                 if event_short not in {"start", "data", "stop"}:
                     raise ValueError("Invalid driving event type")
@@ -428,12 +454,18 @@ async def post_batch_sync(
                 drv_record = DrivingRecord(
                     user_id=user.id,
                     device_id=payload.device_id,
-                    event_type=("driving_" + event_short if event_short in {"start", "data", "stop"} else event_short),
+                    event_type=(
+                        "driving_" + event_short
+                        if event_short in {"start", "data", "stop"}
+                        else event_short
+                    ),
                     client_time=ts,
                     latitude=lat,
                     longitude=lon,
                     accuracy=loc.get("accuracy"),
-                    altitude=rec_dict.get("altitude") if rec_dict.get("altitude") is not None else loc.get("altitude"),
+                    altitude=rec_dict.get("altitude")
+                    if rec_dict.get("altitude") is not None
+                    else loc.get("altitude"),
                     speed=rec_dict.get("speed"),
                     bearing=rec_dict.get("bearing"),
                     trip_id=rec_dict.get("trip_id"),
@@ -479,16 +511,30 @@ async def post_batch_sync(
 async def get_locations_query(
     request: Request,
     user: Optional[str] = Query(None, description="Filter by username"),
-    date_from: Optional[str] = Query(None, description="Start date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"),
-    date_to: Optional[str] = Query(None, description="End date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"),
-    accuracy_max: Optional[float] = Query(None, ge=0, description="Maximum accuracy in meters"),
-    anomaly_status: Optional[str] = Query(None, description="Filter by anomaly status (ignored for now)"),
-    lat: Optional[float] = Query(None, ge=-90, le=90, description="Latitude for geo radius search"),
-    lng: Optional[float] = Query(None, ge=-180, le=180, description="Longitude for geo radius search"),
+    date_from: Optional[str] = Query(
+        None, description="Start date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"
+    ),
+    date_to: Optional[str] = Query(
+        None, description="End date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"
+    ),
+    accuracy_max: Optional[float] = Query(
+        None, ge=0, description="Maximum accuracy in meters"
+    ),
+    anomaly_status: Optional[str] = Query(
+        None, description="Filter by anomaly status (ignored for now)"
+    ),
+    lat: Optional[float] = Query(
+        None, ge=-90, le=90, description="Latitude for geo radius search"
+    ),
+    lng: Optional[float] = Query(
+        None, ge=-180, le=180, description="Longitude for geo radius search"
+    ),
     radius: float = Query(100, gt=0, description="Radius in meters for geo search"),
     limit: int = Query(1000, ge=1, le=10000, description="Maximum records to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    include_anomaly_status: bool = Query(True, description="Include anomaly info (placeholder)"),
+    include_anomaly_status: bool = Query(
+        True, description="Include anomaly info (placeholder)"
+    ),
     _auth: Optional[User] = Depends(get_location_auth),
     db: Session = Depends(get_location_db),
 ):
@@ -502,7 +548,10 @@ async def get_locations_query(
 
     # Validate geo params coherence
     if (lat is None) != (lng is None):
-        raise HTTPException(status_code=400, detail="Both lat and lng are required for geographic search")
+        raise HTTPException(
+            status_code=400,
+            detail="Both lat and lng are required for geographic search",
+        )
 
     # Parse dates (accept a few common formats)
     def _parse_dt(v: Optional[str]) -> Optional[datetime]:
@@ -537,7 +586,10 @@ async def get_locations_query(
     if dt_to:
         q = q.filter(LocationRecord.server_time <= dt_to)
     if accuracy_max is not None:
-        q = q.filter((LocationRecord.accuracy == None) | (LocationRecord.accuracy <= accuracy_max))  # noqa: E711
+        q = q.filter(
+            (LocationRecord.accuracy == None)
+            | (LocationRecord.accuracy <= accuracy_max)
+        )  # noqa: E711
 
     rows = q.all()
 
@@ -548,7 +600,10 @@ async def get_locations_query(
         phi2 = math.radians(lat2)
         dphi = math.radians(lat2 - lat1)
         dlambda = math.radians(lon2 - lon1)
-        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        a = (
+            math.sin(dphi / 2) ** 2
+            + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+        )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
 
@@ -559,7 +614,12 @@ async def get_locations_query(
         lng_val = float(loc.longitude) if loc.longitude is not None else None
 
         # Geo filter
-        if lat is not None and lng is not None and lat_val is not None and lng_val is not None:
+        if (
+            lat is not None
+            and lng is not None
+            and lat_val is not None
+            and lng_val is not None
+        ):
             if haversine_m(lat, lng, lat_val, lng_val) > radius:
                 continue
 
@@ -585,8 +645,12 @@ async def get_locations_query(
             "user_agent": loc.user_agent,
             "source_type": loc.source_type,
             "batch_sync_id": loc.batch_sync_id,
-            "created_at": loc.created_at.isoformat() if getattr(loc, "created_at", None) else None,
-            "updated_at": loc.updated_at.isoformat() if getattr(loc, "updated_at", None) else None,
+            "created_at": loc.created_at.isoformat()
+            if getattr(loc, "created_at", None)
+            else None,
+            "updated_at": loc.updated_at.isoformat()
+            if getattr(loc, "updated_at", None)
+            else None,
         }
         if include_anomaly_status:
             item["anomaly_status"] = "normal"
@@ -611,9 +675,15 @@ async def get_locations_query(
 async def get_driving_records_query(
     request: Request,
     user: Optional[str] = Query(None, description="Filter by username"),
-    date_from: Optional[str] = Query(None, description="Start date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"),
-    date_to: Optional[str] = Query(None, description="End date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"),
-    event_type: Optional[str] = Query(None, description="Filter by event type (start, data, stop)"),
+    date_from: Optional[str] = Query(
+        None, description="Start date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"
+    ),
+    date_to: Optional[str] = Query(
+        None, description="End date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)"
+    ),
+    event_type: Optional[str] = Query(
+        None, description="Filter by event type (start, data, stop)"
+    ),
     trip_id: Optional[str] = Query(None, description="Filter by specific trip ID"),
     limit: int = Query(1000, ge=1, le=10000, description="Maximum records to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -628,7 +698,9 @@ async def get_driving_records_query(
     # Validate event_type
     valid_events = {"start", "data", "stop"}
     if event_type is not None and event_type not in valid_events:
-        raise HTTPException(status_code=400, detail="Invalid event_type. Must be: start, data, or stop")
+        raise HTTPException(
+            status_code=400, detail="Invalid event_type. Must be: start, data, or stop"
+        )
 
     # Parse dates
     def _parse_dt(v: Optional[str]) -> Optional[datetime]:
@@ -661,7 +733,9 @@ async def get_driving_records_query(
     if dt_to:
         q = q.filter(DrivingRecord.server_time <= dt_to)
     if event_type:
-        q = q.filter(DrivingRecord.event_type.in_([event_type, f"driving_{event_type}"]))
+        q = q.filter(
+            DrivingRecord.event_type.in_([event_type, f"driving_{event_type}"])
+        )
     if trip_id:
         q = q.filter(DrivingRecord.trip_id == trip_id)
 
@@ -678,7 +752,12 @@ async def get_driving_records_query(
             "username": usr.username.lower(),
             "display_name": usr.display_name,
             "device_id": dr.device_id,
-            "event_type": (dr.event_type[8:] if isinstance(dr.event_type, str) and dr.event_type.startswith("driving_") else dr.event_type),
+            "event_type": (
+                dr.event_type[8:]
+                if isinstance(dr.event_type, str)
+                and dr.event_type.startswith("driving_")
+                else dr.event_type
+            ),
             "server_time": dr.server_time.isoformat() if dr.server_time else None,
             "client_time": dr.client_time,
             "latitude": lat_val,
@@ -690,8 +769,12 @@ async def get_driving_records_query(
             "trip_id": dr.trip_id,
             "ip_address": dr.ip_address,
             "user_agent": dr.user_agent,
-            "created_at": dr.created_at.isoformat() if getattr(dr, "created_at", None) else None,
-            "updated_at": dr.updated_at.isoformat() if getattr(dr, "updated_at", None) else None,
+            "created_at": dr.created_at.isoformat()
+            if getattr(dr, "created_at", None)
+            else None,
+            "updated_at": dr.updated_at.isoformat()
+            if getattr(dr, "updated_at", None)
+            else None,
         }
         records.append(item)
 
@@ -708,14 +791,18 @@ async def get_driving_records_query(
     }
 
 
-
-
 # Legacy-compatible users listing endpoint
 @router.get("/api/users")
 async def get_users(
-    with_location_data: bool = Query(True, description="Only users with location data if true; all users if false"),
-    include_counts: bool = Query(False, description="Include counts of location and driving records per user"),
-    include_metadata: bool = Query(False, description="Include last record timestamps per user"),
+    with_location_data: bool = Query(
+        True, description="Only users with location data if true; all users if false"
+    ),
+    include_counts: bool = Query(
+        False, description="Include counts of location and driving records per user"
+    ),
+    include_metadata: bool = Query(
+        False, description="Include last record timestamps per user"
+    ),
     _auth: Optional[User] = Depends(get_location_auth),
     db: Session = Depends(get_location_db),
 ):
@@ -735,7 +822,7 @@ async def get_users(
     if with_location_data:
         # In production test mode, restrict to very recent records to avoid cross-test contamination
         if in_prod_test:
-            cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+            cutoff = datetime.now(UTC) - timedelta(seconds=10)
             subq = (
                 db.query(LocationRecord.user_id)
                 .filter(
@@ -763,13 +850,17 @@ async def get_users(
     for u in users:
         item = {
             "id": u.id,
-            "username": (u.username.lower() if isinstance(u.username, str) else u.username),
+            "username": (
+                u.username.lower() if isinstance(u.username, str) else u.username
+            ),
             "display_name": u.display_name,
-            "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+            "created_at": u.created_at.isoformat()
+            if getattr(u, "created_at", None)
+            else None,
         }
         if include_counts:
             if in_prod_test:
-                cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+                cutoff = datetime.now(UTC) - timedelta(seconds=10)
                 loc_count = (
                     db.query(LocationRecord)
                     .filter(
@@ -795,13 +886,21 @@ async def get_users(
                     .count()
                 )
             else:
-                loc_count = db.query(LocationRecord).filter(LocationRecord.user_id == u.id).count()
-                drv_count = db.query(DrivingRecord).filter(DrivingRecord.user_id == u.id).count()
+                loc_count = (
+                    db.query(LocationRecord)
+                    .filter(LocationRecord.user_id == u.id)
+                    .count()
+                )
+                drv_count = (
+                    db.query(DrivingRecord)
+                    .filter(DrivingRecord.user_id == u.id)
+                    .count()
+                )
             item["location_count"] = int(loc_count)
             item["driving_count"] = int(drv_count)
         if include_metadata:
             if in_prod_test:
-                cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+                cutoff = datetime.now(UTC) - timedelta(seconds=10)
                 last_loc = (
                     db.query(func.max(LocationRecord.server_time))
                     .filter(
@@ -827,8 +926,16 @@ async def get_users(
                     .scalar()
                 )
             else:
-                last_loc = db.query(func.max(LocationRecord.server_time)).filter(LocationRecord.user_id == u.id).scalar()
-                last_drv = db.query(func.max(DrivingRecord.server_time)).filter(DrivingRecord.user_id == u.id).scalar()
+                last_loc = (
+                    db.query(func.max(LocationRecord.server_time))
+                    .filter(LocationRecord.user_id == u.id)
+                    .scalar()
+                )
+                last_drv = (
+                    db.query(func.max(DrivingRecord.server_time))
+                    .filter(DrivingRecord.user_id == u.id)
+                    .scalar()
+                )
             item["last_location_time"] = last_loc.isoformat() if last_loc else None
             item["last_driving_time"] = last_drv.isoformat() if last_drv else None
         results.append(item)
@@ -837,6 +944,7 @@ async def get_users(
 
 
 # Stats endpoints: GET and POST with unique operation IDs and optional segmented counts
+
 
 def _build_stats_response(
     db: Session,
@@ -856,7 +964,10 @@ def _build_stats_response(
     # Validate timeframe
     valid_timeframes = {"today", "last_24h", "last_7d", "last_week", "total", "custom"}
     if timeframe not in valid_timeframes:
-        raise HTTPException(status_code=400, detail=f"Invalid timeframe. Must be one of: {', '.join(sorted(valid_timeframes))}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid timeframe. Must be one of: {', '.join(sorted(valid_timeframes))}",
+        )
 
     # Resolve timeframe to [from, to] in UTC
     now = datetime.utcnow()
@@ -881,9 +992,13 @@ def _build_stats_response(
         start_dt = datetime(2000, 1, 1)
         end_dt = now
     elif timeframe == "custom":
+
         def _parse_iso(val: Optional[str]) -> datetime:
             if not val:
-                raise HTTPException(status_code=400, detail="custom timeframe requires both from and to parameters")
+                raise HTTPException(
+                    status_code=400,
+                    detail="custom timeframe requires both from and to parameters",
+                )
             for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
                 try:
                     dt = datetime.strptime(val, fmt)
@@ -915,10 +1030,14 @@ def _build_stats_response(
             resolved_device_id = device_name
             resolved_device_name = device_name
     else:
-        raise HTTPException(status_code=400, detail="device_name is required (or provide device_id)")
+        raise HTTPException(
+            status_code=400, detail="device_name is required (or provide device_id)"
+        )
 
     # Caching key normalization
-    cache_device_key = (resolved_device_name or device_name or resolved_device_id) or "unknown"
+    cache_device_key = (
+        resolved_device_name or device_name or resolved_device_id
+    ) or "unknown"
     bucket_start = start_dt
     bucket_end = end_dt
     if timeframe in {"today", "last_24h"}:
@@ -991,7 +1110,9 @@ def _build_stats_response(
         except Exception:
             loc_cutoff = None
         if not loc_cutoff:
-            loc_cutoff = loc_run_start or (datetime.now(timezone.utc) - timedelta(seconds=2))
+            loc_cutoff = loc_run_start or (
+                datetime.now(UTC) - timedelta(seconds=2)
+            )
 
         try:
             last2_drv = (
@@ -1012,8 +1133,9 @@ def _build_stats_response(
         except Exception:
             drv_cutoff = None
         if not drv_cutoff:
-            drv_cutoff = drv_run_start or (datetime.now(timezone.utc) - timedelta(seconds=2))
-
+            drv_cutoff = drv_run_start or (
+                datetime.now(UTC) - timedelta(seconds=2)
+            )
 
     # After deriving run start/last markers, perform cache lookup with a dynamic key in prod-test mode
     if in_prod_test:
@@ -1023,7 +1145,6 @@ def _build_stats_response(
     else:
         dynamic_cache_key = cache_key
         cached = _stats_cache_get(dynamic_cache_key)
-
 
     # Helper to compute segments without affecting cached base
     def _compute_segments(granularity: Optional[str]) -> Optional[dict]:
@@ -1044,54 +1165,44 @@ def _build_stats_response(
             buckets.append((bs, be))
 
         # Fetch rows once, then bucket in Python for cross-DB compatibility
-        loc_rows = (
-            db.query(LocationRecord.server_time, LocationRecord.source_type)
-            .filter(LocationRecord.device_id == resolved_device_id)
-        )
+        loc_rows = db.query(
+            LocationRecord.server_time, LocationRecord.source_type
+        ).filter(LocationRecord.device_id == resolved_device_id)
         # In production-test mode, restrict to recent testclient-authored rows only;
         # otherwise use the requested timeframe [start_dt, end_dt].
         if in_prod_test:
             cutoff = loc_cutoff
-            loc_rows = (
-                loc_rows.filter(
-                    or_(
-                        LocationRecord.user_agent.ilike("%testclient%"),
-                        LocationRecord.ip_address == "testclient",
-                    )
+            loc_rows = loc_rows.filter(
+                or_(
+                    LocationRecord.user_agent.ilike("%testclient%"),
+                    LocationRecord.ip_address == "testclient",
                 )
-                .filter(LocationRecord.server_time >= cutoff)
-            )
+            ).filter(LocationRecord.server_time >= cutoff)
         else:
-            loc_rows = (
-                loc_rows.filter(LocationRecord.server_time >= start_dt)
-                .filter(LocationRecord.server_time <= end_dt)
+            loc_rows = loc_rows.filter(LocationRecord.server_time >= start_dt).filter(
+                LocationRecord.server_time <= end_dt
             )
         loc_rows = loc_rows.all()
 
-        drv_rows = (
-            db.query(DrivingRecord.server_time, DrivingRecord.trip_id)
-            .filter(DrivingRecord.device_id == resolved_device_id)
+        drv_rows = db.query(DrivingRecord.server_time, DrivingRecord.trip_id).filter(
+            DrivingRecord.device_id == resolved_device_id
         )
         if in_prod_test:
             cutoff = drv_cutoff
-            drv_rows = (
-                drv_rows.filter(
-                    or_(
-                        DrivingRecord.user_agent.ilike("%testclient%"),
-                        DrivingRecord.ip_address == "testclient",
-                    )
+            drv_rows = drv_rows.filter(
+                or_(
+                    DrivingRecord.user_agent.ilike("%testclient%"),
+                    DrivingRecord.ip_address == "testclient",
                 )
-                .filter(DrivingRecord.server_time >= cutoff)
-            )
+            ).filter(DrivingRecord.server_time >= cutoff)
         else:
-            drv_rows = (
-                drv_rows.filter(DrivingRecord.server_time >= start_dt)
-                .filter(DrivingRecord.server_time <= end_dt)
+            drv_rows = drv_rows.filter(DrivingRecord.server_time >= start_dt).filter(
+                DrivingRecord.server_time <= end_dt
             )
         drv_rows = drv_rows.all()
 
         bucket_payload = []
-        for (bs, be) in buckets:
+        for bs, be in buckets:
             # Location counts
             loc_in = [r for r in loc_rows if r[0] and r[0] >= bs and r[0] < be]
             total_loc = len(loc_in)
@@ -1118,16 +1229,19 @@ def _build_stats_response(
     # If cached, attach segments (if requested) and return
     if cached is not None:
         if include_segments:
-            gran = "hour" if timeframe == "last_24h" else ("day" if timeframe == "last_7d" else None)
+            gran = (
+                "hour"
+                if timeframe == "last_24h"
+                else ("day" if timeframe == "last_7d" else None)
+            )
             seg = _compute_segments(gran)
             if seg is not None:
                 cached["segments"] = seg
         return cached
 
     # Compute base counts
-    q_loc = (
-        db.query(LocationRecord)
-        .filter(LocationRecord.device_id == resolved_device_id)
+    q_loc = db.query(LocationRecord).filter(
+        LocationRecord.device_id == resolved_device_id
     )
     # Apply timeframe filter conditionally to avoid timezone mismatches in production-test mode
     if in_prod_test:
@@ -1168,7 +1282,7 @@ def _build_stats_response(
 
     # Meta
     if in_prod_test:
-        cutoff = loc_run_start or (datetime.now(timezone.utc) - timedelta(seconds=2))
+        cutoff = loc_run_start or (datetime.now(UTC) - timedelta(seconds=2))
         first_seen = (
             db.query(func.min(LocationRecord.server_time))
             .filter(
@@ -1198,8 +1312,16 @@ def _build_stats_response(
             .scalar()
         )
     else:
-        first_seen = db.query(func.min(LocationRecord.server_time)).filter(LocationRecord.device_id == resolved_device_id).scalar()
-        last_update = db.query(func.max(LocationRecord.server_time)).filter(LocationRecord.device_id == resolved_device_id).scalar()
+        first_seen = (
+            db.query(func.min(LocationRecord.server_time))
+            .filter(LocationRecord.device_id == resolved_device_id)
+            .scalar()
+        )
+        last_update = (
+            db.query(func.max(LocationRecord.server_time))
+            .filter(LocationRecord.device_id == resolved_device_id)
+            .scalar()
+        )
 
     base = {
         "device_name": resolved_device_name or device_name or resolved_device_id,
@@ -1225,7 +1347,11 @@ def _build_stats_response(
     _stats_cache_set(dynamic_cache_key, base, _stats_ttl_for_timeframe(timeframe))
 
     if include_segments:
-        gran = "hour" if timeframe == "last_24h" else ("day" if timeframe == "last_7d" else None)
+        gran = (
+            "hour"
+            if timeframe == "last_24h"
+            else ("day" if timeframe == "last_7d" else None)
+        )
         seg = _compute_segments(gran)
         if seg is not None:
             ret = copy.deepcopy(base)
@@ -1247,16 +1373,31 @@ def _build_stats_response(
 )
 async def get_stats_get(
     request: Request,
-    device_name: Optional[str] = Query(None, description="Device friendly name (legacy PHP parameter)"),
-    device_id: Optional[str] = Query(None, description="Device identifier (convenience parameter)"),
-    timeframe: str = Query("today", description="today|last_24h|last_7d|last_week|total|custom"),
-    from_param: Optional[str] = Query(None, alias="from", description="Start (ISO) for custom timeframe"),
-    to_param: Optional[str] = Query(None, alias="to", description="End (ISO) for custom timeframe"),
-    segments: bool = Query(False, description="Include segmented counts: hourly for last_24h, daily for last_7d"),
+    device_name: Optional[str] = Query(
+        None, description="Device friendly name (legacy PHP parameter)"
+    ),
+    device_id: Optional[str] = Query(
+        None, description="Device identifier (convenience parameter)"
+    ),
+    timeframe: str = Query(
+        "today", description="today|last_24h|last_7d|last_week|total|custom"
+    ),
+    from_param: Optional[str] = Query(
+        None, alias="from", description="Start (ISO) for custom timeframe"
+    ),
+    to_param: Optional[str] = Query(
+        None, alias="to", description="End (ISO) for custom timeframe"
+    ),
+    segments: bool = Query(
+        False,
+        description="Include segmented counts: hourly for last_24h, daily for last_7d",
+    ),
     _auth: Optional[User] = Depends(get_location_auth),
     db: Session = Depends(get_location_db),
 ):
-    return _build_stats_response(db, device_name, device_id, timeframe, from_param, to_param, segments)
+    return _build_stats_response(
+        db, device_name, device_id, timeframe, from_param, to_param, segments
+    )
 
 
 @router.post(
@@ -1284,10 +1425,16 @@ async def get_stats_post(
         include_segments=bool(payload.segments or False),
     )
 
+
 # --- Live endpoints (history, latest, stream, session) ---
 
-def _collect_list(single: Optional[str], many: Optional[List[str]], many_brackets: Optional[List[str]] = None) -> Optional[List[str]]:
-    items: List[str] = []
+
+def _collect_list(
+    single: Optional[str],
+    many: Optional[list[str]],
+    many_brackets: Optional[list[str]] = None,
+) -> Optional[list[str]]:
+    items: list[str] = []
     if single:
         items.extend([s.strip() for s in single.split(",") if s.strip()])
     for arr in (many, many_brackets):
@@ -1305,15 +1452,42 @@ def _collect_list(single: Optional[str], many: Optional[List[str]], many_bracket
     description="Return recent location points within a duration window. Filter by users/devices or all.",
 )
 async def live_history(
-    user: Optional[str] = Query(None, description="Single username or comma-separated list"),
-    users: Optional[List[str]] = Query(None, alias="users", description="Repeatable usernames list (?users=adar&users=ben)"),
-    users_brackets: Optional[List[str]] = Query(None, alias="users[]", description="Bracket array usernames list (?users[]=adar&users[]=ben)"),
-    device: Optional[str] = Query(None, description="Single device ID or comma-separated list"),
-    devices: Optional[List[str]] = Query(None, alias="devices", description="Repeatable device IDs list (?devices=dev1&devices=dev2)"),
-    devices_brackets: Optional[List[str]] = Query(None, alias="devices[]", description="Bracket array device IDs list (?devices[]=dev1&devices[]=dev2)"),
-    all: bool = Query(False, description="Include all users/devices; if true, user/device filters are ignored"),
-    duration: int = Query(3600, ge=1, le=86400, description="Time window in seconds (max 86400)"),
-    limit: int = Query(500, ge=1, le=5000, description="Max records to return (1-5000), default 500"),
+    user: Optional[str] = Query(
+        None, description="Single username or comma-separated list"
+    ),
+    users: Optional[list[str]] = Query(
+        None,
+        alias="users",
+        description="Repeatable usernames list (?users=adar&users=ben)",
+    ),
+    users_brackets: Optional[list[str]] = Query(
+        None,
+        alias="users[]",
+        description="Bracket array usernames list (?users[]=adar&users[]=ben)",
+    ),
+    device: Optional[str] = Query(
+        None, description="Single device ID or comma-separated list"
+    ),
+    devices: Optional[list[str]] = Query(
+        None,
+        alias="devices",
+        description="Repeatable device IDs list (?devices=dev1&devices=dev2)",
+    ),
+    devices_brackets: Optional[list[str]] = Query(
+        None,
+        alias="devices[]",
+        description="Bracket array device IDs list (?devices[]=dev1&devices[]=dev2)",
+    ),
+    all: bool = Query(
+        False,
+        description="Include all users/devices; if true, user/device filters are ignored",
+    ),
+    duration: int = Query(
+        3600, ge=1, le=86400, description="Time window in seconds (max 86400)"
+    ),
+    limit: int = Query(
+        500, ge=1, le=5000, description="Max records to return (1-5000), default 500"
+    ),
     offset: int = Query(0, ge=0, description="Pagination offset, default 0"),
     segments: bool = Query(False, description="Reserved parameter (ignored)"),
     _auth: Optional[User] = Depends(get_location_auth),
@@ -1326,7 +1500,10 @@ async def live_history(
     device_ids = _collect_list(device, devices, devices_brackets)
 
     if not all and not usernames and not device_ids:
-        raise HTTPException(status_code=400, detail="Must specify user/users or device/devices or all=true")
+        raise HTTPException(
+            status_code=400,
+            detail="Must specify user/users or device/devices or all=true",
+        )
 
     since_dt = datetime.utcnow() - timedelta(seconds=duration)
 
@@ -1339,7 +1516,7 @@ async def live_history(
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
     in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     if in_prod_test:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        cutoff = datetime.now(UTC) - timedelta(seconds=10)
         q = q.filter(
             or_(
                 LocationRecord.user_agent.ilike("%testclient%"),
@@ -1347,18 +1524,16 @@ async def live_history(
             )
         ).filter(LocationRecord.server_time >= cutoff)
 
-
     if usernames and not all:
-        q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
+        q = q.filter(
+            func.lower(LocationUser.username).in_([u.lower() for u in usernames])
+        )
     if device_ids:
         q = q.filter(LocationRecord.device_id.in_(device_ids))
 
     total = q.count()
     rows = (
-        q.order_by(LocationRecord.server_time.desc())
-        .limit(limit)
-        .offset(offset)
-        .all()
+        q.order_by(LocationRecord.server_time.desc()).limit(limit).offset(offset).all()
     )
 
     points = []
@@ -1371,7 +1546,11 @@ async def live_history(
             {
                 "device_id": loc.device_id,
                 "user_id": int(loc.user_id) if loc.user_id is not None else None,
-                "username": (usr.username.lower() if isinstance(usr.username, str) else usr.username),
+                "username": (
+                    usr.username.lower()
+                    if isinstance(usr.username, str)
+                    else usr.username
+                ),
                 "display_name": usr.display_name,
                 "latitude": lat_val,
                 "longitude": lng_val,
@@ -1380,7 +1559,12 @@ async def live_history(
                 "speed": loc.speed,
                 "bearing": loc.bearing,
                 "battery_level": loc.battery_level,
-                "recorded_at": (getattr(loc, "client_time_iso", None).isoformat() if getattr(loc, "client_time_iso", None) is not None and hasattr(getattr(loc, "client_time_iso", None), "isoformat") else getattr(loc, "client_time_iso", None)),
+                "recorded_at": (
+                    getattr(loc, "client_time_iso", None).isoformat()
+                    if getattr(loc, "client_time_iso", None) is not None
+                    and hasattr(getattr(loc, "client_time_iso", None), "isoformat")
+                    else getattr(loc, "client_time_iso", None)
+                ),
                 "server_time": st.isoformat() if st else None,
                 "server_timestamp": server_ts,
             }
@@ -1411,15 +1595,41 @@ async def live_history(
     description="Return the most recent location per device with age and recency flags.",
 )
 async def live_latest(
-    user: Optional[str] = Query(None, description="Single username or comma-separated list"),
-    users: Optional[List[str]] = Query(None, alias="users", description="Repeatable usernames list (?users=adar&users=ben)"),
-    users_brackets: Optional[List[str]] = Query(None, alias="users[]", description="Bracket array usernames list (?users[]=adar&users[]=ben)"),
-    device: Optional[str] = Query(None, description="Single device ID or comma-separated list"),
-    devices: Optional[List[str]] = Query(None, alias="devices", description="Repeatable device IDs list (?devices=dev1&devices=dev2)"),
-    devices_brackets: Optional[List[str]] = Query(None, alias="devices[]", description="Bracket array device IDs list (?devices[]=dev1&devices[]=dev2)"),
-    all: bool = Query(False, description="Include all users/devices; if true, user/device filters are ignored"),
+    user: Optional[str] = Query(
+        None, description="Single username or comma-separated list"
+    ),
+    users: Optional[list[str]] = Query(
+        None,
+        alias="users",
+        description="Repeatable usernames list (?users=adar&users=ben)",
+    ),
+    users_brackets: Optional[list[str]] = Query(
+        None,
+        alias="users[]",
+        description="Bracket array usernames list (?users[]=adar&users[]=ben)",
+    ),
+    device: Optional[str] = Query(
+        None, description="Single device ID or comma-separated list"
+    ),
+    devices: Optional[list[str]] = Query(
+        None,
+        alias="devices",
+        description="Repeatable device IDs list (?devices=dev1&devices=dev2)",
+    ),
+    devices_brackets: Optional[list[str]] = Query(
+        None,
+        alias="devices[]",
+        description="Bracket array device IDs list (?devices[]=dev1&devices[]=dev2)",
+    ),
+    all: bool = Query(
+        False,
+        description="Include all users/devices; if true, user/device filters are ignored",
+    ),
     max_age: int = Query(3600, ge=0, description="Maximum age in seconds"),
-    include_inactive: bool = Query(False, description="Include devices/users with no recent location (returns last known if any)"),
+    include_inactive: bool = Query(
+        False,
+        description="Include devices/users with no recent location (returns last known if any)",
+    ),
     _auth: Optional[User] = Depends(get_location_auth),
     db: Session = Depends(get_location_db),
 ):
@@ -1429,9 +1639,8 @@ async def live_latest(
     usernames = _collect_list(user, users, users_brackets)
     device_ids = _collect_list(device, devices, devices_brackets)
 
-    q = (
-        db.query(LocationRecord, LocationUser)
-        .join(LocationUser, LocationRecord.user_id == LocationUser.id)
+    q = db.query(LocationRecord, LocationUser).join(
+        LocationUser, LocationRecord.user_id == LocationUser.id
     )
 
     if not include_inactive:
@@ -1439,7 +1648,9 @@ async def live_latest(
         q = q.filter(LocationRecord.server_time >= since_dt)
 
     if usernames and not all:
-        q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
+        q = q.filter(
+            func.lower(LocationUser.username).in_([u.lower() for u in usernames])
+        )
     if device_ids:
         q = q.filter(LocationRecord.device_id.in_(device_ids))
 
@@ -1447,7 +1658,7 @@ async def live_latest(
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
     in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     if in_prod_test:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        cutoff = datetime.now(UTC) - timedelta(seconds=10)
         q = q.filter(
             or_(
                 LocationRecord.user_agent.ilike("%testclient%"),
@@ -1471,10 +1682,16 @@ async def live_latest(
             {
                 "device_id": loc.device_id,
                 "user_id": int(loc.user_id) if loc.user_id is not None else None,
-                "username": (usr.username.lower() if isinstance(usr.username, str) else usr.username),
+                "username": (
+                    usr.username.lower()
+                    if isinstance(usr.username, str)
+                    else usr.username
+                ),
                 "display_name": usr.display_name,
                 "latitude": float(loc.latitude) if loc.latitude is not None else None,
-                "longitude": float(loc.longitude) if loc.longitude is not None else None,
+                "longitude": float(loc.longitude)
+                if loc.longitude is not None
+                else None,
                 "accuracy": loc.accuracy,
                 "altitude": loc.altitude,
                 "speed": loc.speed,
@@ -1482,7 +1699,12 @@ async def live_latest(
                 "battery_level": loc.battery_level,
                 "network_type": getattr(loc, "network_type", None),
                 "provider": getattr(loc, "provider", None),
-                "recorded_at": (getattr(loc, "client_time_iso", None).isoformat() if getattr(loc, "client_time_iso", None) is not None and hasattr(getattr(loc, "client_time_iso", None), "isoformat") else getattr(loc, "client_time_iso", None)),
+                "recorded_at": (
+                    getattr(loc, "client_time_iso", None).isoformat()
+                    if getattr(loc, "client_time_iso", None) is not None
+                    and hasattr(getattr(loc, "client_time_iso", None), "isoformat")
+                    else getattr(loc, "client_time_iso", None)
+                ),
                 "server_time": st.isoformat() if st else None,
                 "age_seconds": age_seconds,
                 "is_recent": age_seconds < 300,
@@ -1502,6 +1724,7 @@ async def live_latest(
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
 
+
 @router.get(
     "/api/live/stream",
     response_model=LiveStreamResponse,
@@ -1510,16 +1733,44 @@ async def live_latest(
     description="Return points newer than a cursor (ms). Designed for efficient polling.",
 )
 async def live_stream(
-    user: Optional[str] = Query(None, description="Single username or comma-separated list"),
-    users: Optional[List[str]] = Query(None, alias="users", description="Repeatable usernames list (?users=adar&users=ben)"),
-    users_brackets: Optional[List[str]] = Query(None, alias="users[]", description="Bracket array usernames list (?users[]=adar&users[]=ben)"),
-    device: Optional[str] = Query(None, description="Single device ID or comma-separated list"),
-    devices: Optional[List[str]] = Query(None, alias="devices", description="Repeatable device IDs list (?devices=dev1&devices=dev2)"),
-    devices_brackets: Optional[List[str]] = Query(None, alias="devices[]", description="Bracket array device IDs list (?devices[]=dev1&devices[]=dev2)"),
-    all: bool = Query(False, description="Include all users/devices; if true, user/device filters are ignored"),
+    user: Optional[str] = Query(
+        None, description="Single username or comma-separated list"
+    ),
+    users: Optional[list[str]] = Query(
+        None,
+        alias="users",
+        description="Repeatable usernames list (?users=adar&users=ben)",
+    ),
+    users_brackets: Optional[list[str]] = Query(
+        None,
+        alias="users[]",
+        description="Bracket array usernames list (?users[]=adar&users[]=ben)",
+    ),
+    device: Optional[str] = Query(
+        None, description="Single device ID or comma-separated list"
+    ),
+    devices: Optional[list[str]] = Query(
+        None,
+        alias="devices",
+        description="Repeatable device IDs list (?devices=dev1&devices=dev2)",
+    ),
+    devices_brackets: Optional[list[str]] = Query(
+        None,
+        alias="devices[]",
+        description="Bracket array device IDs list (?devices[]=dev1&devices[]=dev2)",
+    ),
+    all: bool = Query(
+        False,
+        description="Include all users/devices; if true, user/device filters are ignored",
+    ),
     since: int = Query(0, ge=0, description="Cursor timestamp in milliseconds"),
-    limit: int = Query(100, ge=1, le=500, description="Max points to return (1-500), default 100"),
-    session_id: Optional[str] = Query(None, description="Optional session ID created via /live/session; echoed in response"),
+    limit: int = Query(
+        100, ge=1, le=500, description="Max points to return (1-500), default 100"
+    ),
+    session_id: Optional[str] = Query(
+        None,
+        description="Optional session ID created via /live/session; echoed in response",
+    ),
     _auth: Optional[User] = Depends(get_location_auth),
     db: Session = Depends(get_location_db),
 ):
@@ -1531,7 +1782,10 @@ async def live_stream(
     device_ids = _collect_list(device, devices, devices_brackets)
 
     if not all and not usernames and not device_ids:
-        raise HTTPException(status_code=400, detail="Must specify user/users or device/devices or all=true")
+        raise HTTPException(
+            status_code=400,
+            detail="Must specify user/users or device/devices or all=true",
+        )
 
     # Convert since ms to naive datetime
     since_dt = datetime.fromtimestamp(since / 1000.0)
@@ -1545,7 +1799,7 @@ async def live_stream(
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
     in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
     if in_prod_test:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=10)
+        cutoff = datetime.now(UTC) - timedelta(seconds=10)
         q = q.filter(
             or_(
                 LocationRecord.user_agent.ilike("%testclient%"),
@@ -1553,9 +1807,10 @@ async def live_stream(
             )
         ).filter(LocationRecord.server_time >= cutoff)
 
-
     if usernames and not all:
-        q = q.filter(func.lower(LocationUser.username).in_([u.lower() for u in usernames]))
+        q = q.filter(
+            func.lower(LocationUser.username).in_([u.lower() for u in usernames])
+        )
     if device_ids:
         q = q.filter(LocationRecord.device_id.in_(device_ids))
 
@@ -1571,16 +1826,27 @@ async def live_stream(
             {
                 "device_id": loc.device_id,
                 "user_id": int(loc.user_id) if loc.user_id is not None else None,
-                "username": (usr.username.lower() if isinstance(usr.username, str) else usr.username),
+                "username": (
+                    usr.username.lower()
+                    if isinstance(usr.username, str)
+                    else usr.username
+                ),
                 "display_name": usr.display_name,
                 "latitude": float(loc.latitude) if loc.latitude is not None else None,
-                "longitude": float(loc.longitude) if loc.longitude is not None else None,
+                "longitude": float(loc.longitude)
+                if loc.longitude is not None
+                else None,
                 "accuracy": loc.accuracy,
                 "altitude": loc.altitude,
                 "speed": loc.speed,
                 "bearing": loc.bearing,
                 "battery_level": loc.battery_level,
-                "recorded_at": (getattr(loc, "client_time_iso", None).isoformat() if getattr(loc, "client_time_iso", None) is not None and hasattr(getattr(loc, "client_time_iso", None), "isoformat") else getattr(loc, "client_time_iso", None)),
+                "recorded_at": (
+                    getattr(loc, "client_time_iso", None).isoformat()
+                    if getattr(loc, "client_time_iso", None) is not None
+                    and hasattr(getattr(loc, "client_time_iso", None), "isoformat")
+                    else getattr(loc, "client_time_iso", None)
+                ),
                 "server_time": st.isoformat() if st else None,
                 "server_timestamp": server_ts,
             }
@@ -1604,6 +1870,223 @@ async def live_stream(
     }
 
 
+@router.get(
+    "/live/sse",
+    operation_id="getLiveSSE",
+    summary="Server-Sent Events: live location updates",
+    description=(
+        "SSE stream of location points newer than a cursor (ms). "
+        "Filter by usernames/devices or all. Use Last-Event-ID header or 'since' query to resume."
+    ),
+)
+async def live_sse(
+    request: Request,
+    user: Optional[str] = Query(
+        None, description="Single username or comma-separated list"
+    ),
+    users: Optional[list[str]] = Query(
+        None,
+        alias="users",
+        description="Repeatable usernames list (?users=adar&users=ben)",
+    ),
+    users_brackets: Optional[list[str]] = Query(
+        None,
+        alias="users[]",
+        description="Bracket array usernames list (?users[]=adar&users[]=ben)",
+    ),
+    device: Optional[str] = Query(
+        None, description="Single device ID or comma-separated list"
+    ),
+    devices: Optional[list[str]] = Query(
+        None,
+        alias="devices",
+        description="Repeatable device IDs list (?devices=dev1&devices=dev2)",
+    ),
+    devices_brackets: Optional[list[str]] = Query(
+        None,
+        alias="devices[]",
+        description="Bracket array device IDs list (?devices[]=dev1&devices[]=dev2)",
+    ),
+    all: bool = Query(
+        False,
+        description="Include all users/devices; if true, user/device filters are ignored",
+    ),
+    since: Optional[int] = Query(
+        None, ge=0, description="Cursor timestamp in milliseconds (optional)"
+    ),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=500,
+        description="Max points to fetch per batch (1-500), default 100",
+    ),
+    heartbeat: int = Query(
+        15, ge=1, le=60, description="Keep-alive ping interval in seconds (default 15)"
+    ),
+    session_id: Optional[str] = Query(
+        None,
+        description="Optional session ID created via /live/session; echoed as comment",
+    ),
+    _auth: Optional[User] = Depends(get_location_auth),
+    db: Session = Depends(get_location_db),
+):
+    """SSE stream for live location updates.
+
+    Notes:
+    - Emits one "point" event per location record newer than the cursor
+    - Each event includes an "id" equal to the server timestamp (ms) to allow resume via Last-Event-ID
+    - Sends periodic keep-alive comments to keep intermediaries from closing the connection
+    """
+    import asyncio
+    import json
+
+    usernames = _collect_list(user, users, users_brackets)
+    device_ids = _collect_list(device, devices, devices_brackets)
+
+    if not all and not usernames and not device_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Must specify user/users or device/devices or all=true",
+        )
+
+    # Determine initial cursor: since query param overrides Last-Event-ID header
+    current_cursor = 0
+    if since is not None:
+        try:
+            current_cursor = int(since)
+        except Exception:
+            current_cursor = 0
+    else:
+        lei = request.headers.get("last-event-id")
+        if lei:
+            try:
+                current_cursor = int(lei)
+            except Exception:
+                current_cursor = 0
+
+    # Production-test isolation: restrict to test-client authored recent rows
+    prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
+    in_prod_test = prod_flag in ("1", "true", "yes", "y", "on")
+
+    async def event_generator():
+        nonlocal current_cursor
+        # Initial meta comment
+        meta = {
+            "filters": {
+                "usernames": usernames or [],
+                "device_ids": device_ids or [],
+                "all": all,
+            },
+            "cursor": current_cursor,
+            "session_id": session_id,
+        }
+        yield f": connected {int(time.time()*1000)} payload={json.dumps(meta, separators=(',', ':'), ensure_ascii=False)}\n\n"
+
+        while True:
+            # Client disconnect?
+            try:
+                if await request.is_disconnected():
+                    break
+            except Exception:
+                # If we cannot detect, continue streaming until an error occurs
+                pass
+
+            # Query for new points newer than current_cursor
+            try:
+                since_dt = datetime.fromtimestamp(current_cursor / 1000.0)
+                q = (
+                    db.query(LocationRecord, LocationUser)
+                    .join(LocationUser, LocationRecord.user_id == LocationUser.id)
+                    .filter(LocationRecord.server_time > since_dt)
+                )
+                if in_prod_test:
+                    cutoff = datetime.now(UTC) - timedelta(seconds=10)
+                    q = q.filter(
+                        or_(
+                            LocationRecord.user_agent.ilike("%testclient%"),
+                            LocationRecord.ip_address == "testclient",
+                        )
+                    ).filter(LocationRecord.server_time >= cutoff)
+
+                if usernames and not all:
+                    q = q.filter(
+                        func.lower(LocationUser.username).in_(
+                            [u.lower() for u in usernames]
+                        )
+                    )
+                if device_ids:
+                    q = q.filter(LocationRecord.device_id.in_(device_ids))
+
+                rows = q.order_by(LocationRecord.server_time.asc()).limit(limit).all()
+
+                if rows:
+                    for loc, usr in rows:
+                        st = loc.server_time
+                        server_ts = int(st.timestamp() * 1000) if st else current_cursor
+                        if server_ts <= current_cursor:
+                            server_ts = current_cursor + 1
+                        current_cursor = max(current_cursor, server_ts)
+                        point = {
+                            "device_id": loc.device_id,
+                            "user_id": int(loc.user_id)
+                            if loc.user_id is not None
+                            else None,
+                            "username": (
+                                usr.username.lower()
+                                if isinstance(usr.username, str)
+                                else usr.username
+                            ),
+                            "display_name": usr.display_name,
+                            "latitude": float(loc.latitude)
+                            if loc.latitude is not None
+                            else None,
+                            "longitude": float(loc.longitude)
+                            if loc.longitude is not None
+                            else None,
+                            "accuracy": loc.accuracy,
+                            "altitude": loc.altitude,
+                            "speed": loc.speed,
+                            "bearing": loc.bearing,
+                            "battery_level": loc.battery_level,
+                            "recorded_at": (
+                                getattr(loc, "client_time_iso", None).isoformat()
+                                if getattr(loc, "client_time_iso", None) is not None
+                                and hasattr(
+                                    getattr(loc, "client_time_iso", None), "isoformat"
+                                )
+                                else getattr(loc, "client_time_iso", None)
+                            ),
+                            "server_time": st.isoformat() if st else None,
+                            "server_timestamp": server_ts,
+                        }
+                        data = json.dumps(
+                            point, separators=(",", ":"), ensure_ascii=False
+                        )
+                        # SSE event
+                        msg = f"id: {server_ts}\nevent: point\ndata: {data}\n\n"
+                        yield msg
+                    # Immediately loop to catch up without sleeping
+                    continue
+
+                # No rows this round: send heartbeat and sleep
+                yield f": keep-alive {int(time.time()*1000)}\n\n"
+                await asyncio.sleep(heartbeat)
+            except Exception as e:
+                # Emit an error event then break
+                err = {"error": str(e)}
+                yield f"event: error\ndata: {json.dumps(err, separators=(',', ':'), ensure_ascii=False)}\n\n"
+                break
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(
+        event_generator(), media_type="text/event-stream", headers=headers
+    )
+
+
 @router.post(
     "/api/live/session",
     response_model=LiveSessionCreateResponse,
@@ -1612,7 +2095,9 @@ async def live_stream(
     description="Create a short-lived session token for streaming live updates.",
 )
 async def create_live_session(
-    payload: LiveSessionCreateRequest = Body(..., description="Session creation parameters"),
+    payload: LiveSessionCreateRequest = Body(
+        ..., description="Session creation parameters"
+    ),
     _auth: Optional[User] = Depends(get_location_auth),
 ):
     device_ids = payload.device_ids or []
@@ -1628,6 +2113,7 @@ async def create_live_session(
         "expires_at": expires_at_dt.isoformat() + "Z",
         "duration": duration,
         "stream_url": f"/location/api/live/stream?session_id={session_id}",
+        "stream_url_sse": f"/location/live/sse?session_id={session_id}",
         "device_ids": device_ids,
     }
 
@@ -1644,7 +2130,6 @@ async def revoke_live_session(
     _auth: Optional[User] = Depends(get_location_auth),
 ):
     return {"session_id": session_id, "revoked": True}
-
 
 
 # Template endpoints - keep placeholders for now
