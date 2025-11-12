@@ -14,7 +14,12 @@ import logging
 import os
 import secrets
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+# Python 3.11 provides datetime.UTC; on Python 3.10 use timezone.utc
+try:
+    from datetime import UTC  # type: ignore[attr-defined]
+except ImportError:  # pragma: no cover - Python < 3.11 fallback
+    UTC = timezone.utc
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
