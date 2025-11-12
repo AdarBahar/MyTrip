@@ -33,6 +33,7 @@ from app.api.routing.router import router as routing_router
 from app.api.settings.router import router as settings_router
 from app.api.stops.router import router as stops_router
 from app.api.trips.router import router as trips_router
+from app.api.proxy.router import router as sse_proxy_router
 
 # Import exception handlers
 from app.core.exception_handlers import (
@@ -707,6 +708,7 @@ app.include_router(settings_router, tags=["settings"])
 app.include_router(monitoring_router, prefix="/monitoring", tags=["monitoring"])
 app.include_router(enums_router, prefix="/enums", tags=["enums"])
 # app.include_router(pins_router, prefix="/pins", tags=["pins"])
+app.include_router(sse_proxy_router, prefix="/api", tags=["sse-proxy"])
 
 # Register exception handlers
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
