@@ -1881,7 +1881,8 @@ async def live_stream(
     summary="Server-Sent Events: live location updates",
     description=(
         "SSE stream of location points newer than a cursor (ms). "
-        "Filter by usernames/devices or all. Use Last-Event-ID header or 'since' query to resume."
+        "Filter by usernames/devices or all. Use Last-Event-ID header or 'since' query to resume. "
+        "If neither is provided, the stream starts at the current server time (no backlog)."
     ),
 )
 async def live_sse(
@@ -1917,7 +1918,7 @@ async def live_sse(
         description="Include all users/devices; if true, user/device filters are ignored",
     ),
     since: Optional[int] = Query(
-        None, ge=0, description="Cursor timestamp in milliseconds (optional)"
+        None, ge=0, description="Cursor timestamp in milliseconds (optional; default: now if absent and no Last-Event-ID)"
     ),
     limit: int = Query(
         100,
@@ -1954,7 +1955,7 @@ async def live_sse(
             detail="Must specify user/users or device/devices or all=true",
         )
 
-    # Determine initial cursor: since query param overrides Last-Event-ID header
+    # Determine initial cursor: since query param overrides Last-Event-ID header; if neither is provided, default to "now" (no backlog)
     current_cursor = 0
     if since is not None:
         try:
@@ -1968,6 +1969,9 @@ async def live_sse(
                 current_cursor = int(lei)
             except Exception:
                 current_cursor = 0
+        else:
+            # No explicit cursor provided: start at current server time (ms) to avoid backfill
+            current_cursor = int(datetime.utcnow().timestamp() * 1000)
 
     # Production-test isolation: restrict to test-client authored recent rows
     prod_flag = str(os.environ.get("PYTEST_PRODUCTION_MODE", "")).lower()
