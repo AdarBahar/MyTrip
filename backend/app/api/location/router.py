@@ -24,6 +24,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
@@ -41,7 +42,11 @@ from app.schemas.batch_sync import (
     BatchSyncResponse,
     ProcessingResults,
 )
-from app.schemas.driving_ingest import DrivingSubmitRequest, DrivingSubmitResponse
+from app.schemas.driving_ingest import (
+    DrivingSubmitRequest,
+    DrivingSubmitResponse,
+    TripSummary,
+)
 from app.schemas.location import (
     LocationCreate,
     LocationHealthResponse,
@@ -244,6 +249,34 @@ async def post_getloc(
     return response
 
 
+def _trip_summary_columns(summary: Optional[TripSummary]) -> dict:
+    """Map an ingest TripSummary onto DrivingRecord trip_* column kwargs."""
+    if summary is None:
+        return {}
+    return {
+        "trip_duration_seconds": summary.duration_seconds,
+        "trip_distance_meters": summary.distance_meters,
+        "trip_avg_speed": summary.avg_speed,
+        "trip_max_speed": summary.max_speed,
+    }
+
+
+def _trip_summary_dict(dr: DrivingRecord) -> Optional[dict]:
+    """Serialize stored trip_* columns back into the ingest trip_summary shape.
+
+    Returns None when no summary field is stored.
+    """
+    summary = {
+        "duration_seconds": dr.trip_duration_seconds,
+        "distance_meters": dr.trip_distance_meters,
+        "avg_speed": dr.trip_avg_speed,
+        "max_speed": dr.trip_max_speed,
+    }
+    if all(v is None for v in summary.values()):
+        return None
+    return summary
+
+
 # Legacy-compatible driving events endpoint
 @router.post("/api/driving", response_model=DrivingSubmitResponse)
 async def post_driving(
@@ -308,6 +341,7 @@ async def post_driving(
         speed=payload.speed,
         bearing=payload.bearing,
         trip_id=payload.trip_id,
+        **_trip_summary_columns(payload.trip_summary),
         ip_address=ip_address,
         user_agent=user_agent,
     )
@@ -456,6 +490,22 @@ async def post_batch_sync(
                 if lat is None or lon is None or ts is None:
                     raise ValueError("Missing timestamp/location for driving record")
 
+                # Optional trip summary (normally only on stop events). Records are
+                # raw dicts here, so validate with the same schema as /api/driving.
+                # An invalid summary is dropped rather than losing the event itself.
+                summary_cols: dict = {}
+                summary_note = ""
+                raw_summary = rec_dict.get("trip_summary")
+                if raw_summary is not None:
+                    try:
+                        summary_cols = _trip_summary_columns(
+                            TripSummary.model_validate(raw_summary)
+                        )
+                    except ValidationError as ve:
+                        summary_note = (
+                            f" (trip_summary ignored: {ve.error_count()} invalid field(s))"
+                        )
+
                 drv_record = DrivingRecord(
                     user_id=user.id,
                     device_id=payload.device_id,
@@ -474,12 +524,15 @@ async def post_batch_sync(
                     speed=rec_dict.get("speed"),
                     bearing=rec_dict.get("bearing"),
                     trip_id=rec_dict.get("trip_id"),
+                    **summary_cols,
                     ip_address=ip_address,
                     user_agent=user_agent,
                 )
                 db.add(drv_record)
                 processed_driving += 1
-                details.append(f"Driving record {idx} processed successfully")
+                details.append(
+                    f"Driving record {idx} processed successfully{summary_note}"
+                )
 
             else:
                 errors += 1
@@ -772,6 +825,7 @@ async def get_driving_records_query(
             "speed": dr.speed,
             "bearing": dr.bearing,
             "trip_id": dr.trip_id,
+            "trip_summary": _trip_summary_dict(dr),
             "ip_address": dr.ip_address,
             "user_agent": dr.user_agent,
             "created_at": dr.created_at.isoformat()

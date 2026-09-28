@@ -121,3 +121,84 @@ class TestDrivingRecordsRead:
         for item in data["driving_records"]:
             assert item["trip_id"] == "trip-E"
 
+    def test_driving_records_trip_summary_from_direct_ingest(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("LOC_API_TOKEN", LOC_TOKEN)
+        headers = {"X-API-Token": LOC_TOKEN}
+        summary = {
+            "duration_seconds": 1200.0,
+            "distance_meters": 15000.0,
+            "avg_speed": 45.0,
+            "max_speed": 88.5,
+        }
+        base = {
+            "id": "dev-dr-ts",
+            "name": "adar",
+            "location": {"latitude": 32.07, "longitude": 34.77},
+            "trip_id": "trip-TS",
+        }
+        for ev, ts in (("start", 1710000200000), ("data", 1710000205000)):
+            r = client.post(
+                "/location/api/driving",
+                json={**base, "event": ev, "timestamp": ts},
+                headers=headers,
+            )
+            assert r.status_code == 200
+        r = client.post(
+            "/location/api/driving",
+            json={**base, "event": "stop", "timestamp": 1710000210000, "trip_summary": summary},
+            headers=headers,
+        )
+        assert r.status_code == 200
+
+        resp = client.get(
+            "/location/api/driving-records",
+            params={"user": "adar", "trip_id": "trip-TS"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        items = resp.json()["driving_records"]
+        assert len(items) == 3
+        by_event = {i["event_type"]: i for i in items}
+        assert by_event["stop"]["trip_summary"] == pytest.approx(summary)
+        assert by_event["start"]["trip_summary"] is None
+        assert by_event["data"]["trip_summary"] is None
+
+    def test_driving_records_trip_summary_from_batch_sync(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("LOC_API_TOKEN", LOC_TOKEN)
+        headers = {"X-API-Token": LOC_TOKEN}
+        payload = {
+            "sync_id": "dev-dr-bts_1710000300000",
+            "device_id": "dev-dr-bts",
+            "user_name": "adar",
+            "part": 1,
+            "total_parts": 1,
+            "records": [
+                {
+                    "type": "driving",
+                    "event_type": "driving_stop",
+                    "timestamp": 1710000300000,
+                    "location": {"latitude": 32.07, "longitude": 34.77},
+                    "trip_id": "trip-BTS",
+                    "trip_summary": {"duration_seconds": 60.0, "max_speed": 30.0},
+                }
+            ],
+        }
+        r = client.post("/location/api/batch-sync", json=payload, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["processing_results"]["driving"] == 1
+
+        resp = client.get(
+            "/location/api/driving-records",
+            params={"trip_id": "trip-BTS"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        items = resp.json()["driving_records"]
+        assert len(items) == 1
+        assert items[0]["trip_summary"] == {
+            "duration_seconds": pytest.approx(60.0),
+            "distance_meters": None,
+            "avg_speed": None,
+            "max_speed": pytest.approx(30.0),
+        }
+
