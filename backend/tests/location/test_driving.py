@@ -134,3 +134,99 @@ class TestDrivingIngest:
         )
         assert resp.status_code == 422
 
+
+class TestDrivingTripSummary:
+    SUMMARY = {
+        "duration_seconds": 1834.0,
+        "distance_meters": 21450.5,
+        "avg_speed": 42.1,
+        "max_speed": 97.3,
+    }
+
+    def _stored(self, record_id: int):
+        from tests.conftest import LocationTestingSessionLocal
+        from app.models.location_records import DrivingRecord
+
+        db = LocationTestingSessionLocal()
+        try:
+            return db.get(DrivingRecord, record_id)
+        finally:
+            db.close()
+
+    def test_stop_with_trip_summary_is_stored(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("LOC_API_TOKEN", LOC_TOKEN)
+        payload = {
+            "id": "device-ts-1",
+            "name": "adar",
+            "event": "stop",
+            "timestamp": 1710000000000,
+            "location": {"latitude": 32.071, "longitude": 34.774},
+            "trip_id": "trip-ts-1",
+            "trip_summary": self.SUMMARY,
+        }
+        resp = client.post(
+            "/location/api/driving", json=payload, headers={"X-API-Token": LOC_TOKEN}
+        )
+        assert resp.status_code == 200
+        rec = self._stored(resp.json()["record_id"])
+        assert rec.event_type == "driving_stop"
+        assert rec.trip_id == "trip-ts-1"
+        assert rec.trip_duration_seconds == pytest.approx(1834.0)
+        assert rec.trip_distance_meters == pytest.approx(21450.5)
+        assert rec.trip_avg_speed == pytest.approx(42.1)
+        assert rec.trip_max_speed == pytest.approx(97.3)
+
+    def test_partial_trip_summary_is_stored(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("LOC_API_TOKEN", LOC_TOKEN)
+        payload = {
+            "id": "device-ts-2",
+            "name": "adar",
+            "event_type": "driving_stop",
+            "timestamp": 1710000000000,
+            "location": {"latitude": 32.071, "longitude": 34.774},
+            "trip_summary": {"distance_meters": 500.0},
+        }
+        resp = client.post(
+            "/location/api/driving", json=payload, headers={"X-API-Token": LOC_TOKEN}
+        )
+        assert resp.status_code == 200
+        rec = self._stored(resp.json()["record_id"])
+        assert rec.trip_distance_meters == pytest.approx(500.0)
+        assert rec.trip_duration_seconds is None
+        assert rec.trip_avg_speed is None
+        assert rec.trip_max_speed is None
+
+    def test_event_without_trip_summary_stores_nulls(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("LOC_API_TOKEN", LOC_TOKEN)
+        payload = {
+            "id": "device-ts-3",
+            "name": "adar",
+            "event": "data",
+            "timestamp": 1710000000000,
+            "location": {"latitude": 32.071, "longitude": 34.774},
+        }
+        resp = client.post(
+            "/location/api/driving", json=payload, headers={"X-API-Token": LOC_TOKEN}
+        )
+        assert resp.status_code == 200
+        rec = self._stored(resp.json()["record_id"])
+        assert rec.trip_duration_seconds is None
+        assert rec.trip_distance_meters is None
+        assert rec.trip_avg_speed is None
+        assert rec.trip_max_speed is None
+
+    def test_negative_trip_summary_value_rejected(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("LOC_API_TOKEN", LOC_TOKEN)
+        payload = {
+            "id": "device-ts-4",
+            "name": "adar",
+            "event": "stop",
+            "timestamp": 1710000000000,
+            "location": {"latitude": 32.071, "longitude": 34.774},
+            "trip_summary": {"distance_meters": -1},
+        }
+        resp = client.post(
+            "/location/api/driving", json=payload, headers={"X-API-Token": LOC_TOKEN}
+        )
+        assert resp.status_code == 422
+

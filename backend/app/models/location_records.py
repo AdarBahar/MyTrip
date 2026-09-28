@@ -131,6 +131,12 @@ class DrivingRecord(LocationBase):
     # Trip association
     trip_id = Column(String(100), nullable=True)
 
+    # Trip summary (typically sent only on stop events)
+    trip_duration_seconds = Column(Float, nullable=True)
+    trip_distance_meters = Column(Float, nullable=True)
+    trip_avg_speed = Column(Float, nullable=True)  # km/h
+    trip_max_speed = Column(Float, nullable=True)  # km/h
+
     # Request context
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(Text, nullable=True)
